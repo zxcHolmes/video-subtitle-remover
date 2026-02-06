@@ -58,6 +58,53 @@ Windows GPU版本v1.1.0（GPU）：
   docker cp vsr:/vsr/test/test_no_sub.mp4 ./
 ```
 
+## 使用方式
+
+本项目支持三种使用方式：
+
+### 1. Web 版本（推荐）🌐
+
+基于 FastAPI + Vue 3 的 Web 界面，无需复杂配置，通过浏览器即可使用。
+
+**特性：**
+- ✅ 友好的图形界面
+- ✅ 实时进度显示
+- ✅ 支持所有平台（Windows/macOS/Linux/移动端）
+- ✅ 一键启动，无需手动配置
+
+**快速开始：**
+```bash
+# 安装依赖
+pip install -r requirements.txt
+pip install -r web/requirements-web.txt
+
+# 开发模式（推荐）
+cd web && ./start-dev.sh
+
+# 或生产模式
+cd web && ./start.sh
+```
+
+访问 `http://localhost:5173` (开发模式) 或 `http://localhost:8000` (生产模式)
+
+**详细文档：** 查看 [web/README-web.md](web/README-web.md)
+
+### 2. GUI 版本（桌面应用）
+
+传统的桌面 GUI 应用，适合本地使用。
+
+```bash
+python gui.py
+```
+
+### 3. 命令行版本（CLI）
+
+适合批量处理和自动化脚本。
+
+```bash
+python backend/main.py
+```
+
 ## 演示
 
 - GUI版：
