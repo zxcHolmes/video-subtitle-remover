@@ -590,6 +590,8 @@ class SubtitleRemover:
         self.mask_size = (int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)), int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
         self.frame_height = int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.frame_width = int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        # 获取原视频码率
+        self.video_bitrate = self._get_video_bitrate(vd_path)
         # 创建字幕检测对象
         self.sub_detector = SubtitleDetect(self.video_path, self.sub_area)
         # 创建视频临时对象，windows下delete=True会有permission denied的报错
@@ -623,6 +625,45 @@ class SubtitleRemover:
         self.preview_frame = None
         # 是否将原音频嵌入到去除字幕后的视频
         self.is_successful_merged = False
+
+    @staticmethod
+    def _get_video_bitrate(video_path):
+        """
+        获取视频码率
+        :param video_path: 视频路径
+        :return: 码率字符串 (例如 "5M") 或 None
+        """
+        try:
+            use_shell = True if os.name == "nt" else False
+            command = [
+                config.FFMPEG_PATH, "-i", video_path,
+                "-f", "null", "-"
+            ]
+            result = subprocess.run(
+                command,
+                stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stdin=open(os.devnull),
+                shell=use_shell,
+                text=True
+            )
+            # 从 ffmpeg 输出中解析码率
+            output = result.stderr
+            import re
+            # 查找类似 "bitrate: 5000 kb/s" 的模式
+            match = re.search(r'bitrate:\s*(\d+)\s*kb/s', output)
+            if match:
+                bitrate_kbps = int(match.group(1))
+                # 转换为合适的单位
+                if bitrate_kbps >= 1000:
+                    bitrate_mbps = bitrate_kbps / 1000
+                    return f"{bitrate_mbps:.1f}M"
+                else:
+                    return f"{bitrate_kbps}k"
+            return None
+        except Exception as e:
+            print(f"Failed to get video bitrate: {e}")
+            return None
 
     @staticmethod
     def get_coordinates(dt_box):
@@ -940,12 +981,32 @@ class SubtitleRemover:
             return
         else:
             if os.path.exists(self.video_temp_file.name):
+                # 构建高质量编码命令
                 audio_merge_command = [config.FFMPEG_PATH,
                                        "-y", "-i", self.video_temp_file.name,
                                        "-i", temp.name,
-                                       "-vcodec", "libx264" if config.USE_H264 else "copy",
-                                       "-acodec", "copy",
-                                       "-loglevel", "error", self.video_out_name]
+                                       "-vcodec", "libx264" if config.USE_H264 else "copy"]
+
+                # 如果使用 H264 编码，添加高质量参数
+                if config.USE_H264:
+                    audio_merge_command.extend([
+                        "-crf", str(config.VIDEO_CRF),  # 质量因子 (可在config.py配置)
+                        "-preset", config.VIDEO_PRESET  # 编码预设 (可在config.py配置)
+                    ])
+                    # 如果检测到原视频码率，使用相同码率
+                    if self.video_bitrate:
+                        audio_merge_command.extend([
+                            "-b:v", self.video_bitrate,
+                            "-maxrate", self.video_bitrate,
+                            "-bufsize", "2M"
+                        ])
+                        print(f"Using original video bitrate: {self.video_bitrate}")
+
+                audio_merge_command.extend([
+                    "-acodec", "copy",
+                    "-loglevel", "error",
+                    self.video_out_name
+                ])
                 try:
                     subprocess.check_output(audio_merge_command, stdin=open(os.devnull), shell=use_shell)
                 except Exception:

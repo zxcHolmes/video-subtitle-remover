@@ -96,6 +96,19 @@ class InpaintMode(Enum):
 # 是否使用h264编码，如果需要安卓手机分享生成的视频，请打开该选项
 USE_H264 = True
 
+# 视频编码质量设置
+# CRF (Constant Rate Factor): 恒定质量因子，范围 0-51
+#   0  = 完全无损 (文件非常大)
+#   18 = 视觉无损 (推荐，质量极高)
+#   23 = 默认值 (质量良好)
+#   28 = 中等质量
+VIDEO_CRF = 18
+
+# 编码预设 (速度vs质量权衡)
+# 可选: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+# slow = 较慢但质量更好 (推荐)
+VIDEO_PRESET = "slow"
+
 # ×××××××××× 通用设置 start ××××××××××
 """
 MODE可选算法类型
