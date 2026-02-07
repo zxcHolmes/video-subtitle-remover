@@ -4,7 +4,6 @@ import sys
 import os
 from typing import List, Dict, Tuple, Optional
 from collections import defaultdict
-from functools import cached_property
 
 # Add project root to path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
@@ -25,42 +24,6 @@ class SubtitleDetectService:
         self.error = None
         self._ocr = None
 
-    @cached_property
-    def ocr_engine(self):
-        """初始化完整的 OCR 引擎（检测+识别，使用 GPU）"""
-        print("[OCR] Starting OCR engine initialization...")
-
-        from paddleocr import PaddleOCR
-
-        # 根据配置决定是否使用 GPU
-        use_gpu = False
-        if config.ONNX_PROVIDERS:
-            print(f"[OCR] GPU providers available: {config.ONNX_PROVIDERS}")
-
-        # 检查是否有 CUDA
-        try:
-            print("[OCR] Checking for CUDA...")
-            import paddle
-            if paddle.is_compiled_with_cuda():
-                use_gpu = True
-                print("[OCR] CUDA available, using GPU for OCR")
-            else:
-                print("[OCR] CUDA not available, using CPU")
-        except Exception as e:
-            print(f"[OCR] Error checking CUDA: {e}")
-
-        print(f"[OCR] Creating PaddleOCR instance (use_gpu={use_gpu})...")
-
-        # 第一次运行会下载模型，可能很慢，显示日志
-        ocr = PaddleOCR(
-            use_angle_cls=True,
-            lang='ch',
-            use_gpu=use_gpu,
-            show_log=True,  # 改为 True，看看卡在哪里
-            det_model_dir=str(config.DET_MODEL_PATH) if hasattr(config, 'DET_MODEL_PATH') else None
-        )
-        print("[OCR] PaddleOCR initialized successfully")
-        return ocr
 
     def is_subtitle_region(
         self,
@@ -117,13 +80,32 @@ class SubtitleDetectService:
 
             # 初始化检测器（使用 GPU）
             print("Initializing SubtitleDetect...")
+            sys.stdout.flush()  # 强制刷新输出
             detector = SubtitleDetect(video_path, sub_area)
             print("SubtitleDetect initialized")
+            sys.stdout.flush()
 
             # 初始化 OCR（使用 GPU）
             print("Initializing OCR engine...")
-            ocr = self.ocr_engine
+            sys.stdout.flush()
+
+            # 直接初始化，不用 cached_property，避免潜在问题
+            from paddleocr import PaddleOCR
+            print("[OCR] Importing PaddleOCR done")
+            sys.stdout.flush()
+
+            print("[OCR] Creating PaddleOCR instance with use_gpu=True, show_log=True...")
+            sys.stdout.flush()
+
+            ocr = PaddleOCR(
+                use_angle_cls=True,
+                lang='ch',
+                use_gpu=True,
+                show_log=True  # 必须显示日志才能看到在做什么
+            )
+
             print("OCR engine initialized")
+            sys.stdout.flush()
 
             # 采样：每秒取1帧
             frame_subtitles = {}
