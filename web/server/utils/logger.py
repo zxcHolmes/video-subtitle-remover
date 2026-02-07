@@ -36,7 +36,7 @@ def setup_logger(name: str = "web_server") -> logging.Logger:
 
     logger.setLevel(logging.DEBUG)
 
-    # 控制台处理器
+    # 控制台处理器 - 强制输出到 stdout
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.DEBUG)
 
@@ -48,6 +48,9 @@ def setup_logger(name: str = "web_server") -> logging.Logger:
     console_handler.setFormatter(formatter)
 
     logger.addHandler(console_handler)
+
+    # 防止日志传播到父 logger（避免被 uvicorn 覆盖）
+    logger.propagate = False
 
     return logger
 

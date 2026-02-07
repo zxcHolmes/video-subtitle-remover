@@ -101,16 +101,21 @@ if os.path.exists(frontend_dist):
 
 if __name__ == "__main__":
     import uvicorn
-    import logging
 
-    # Configure uvicorn to use our logger
-    logging.getLogger("uvicorn").handlers = []
-    logging.getLogger("uvicorn.access").handlers = []
+    # 完全禁用 uvicorn 的日志配置，使用我们自己的 logger
+    log_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {},
+        "handlers": {},
+        "loggers": {}
+    }
 
     # Run server
     uvicorn.run(
         app,
         host="0.0.0.0",
         port=8000,
-        log_level="info"
+        log_config=log_config,
+        access_log=False  # 禁用访问日志
     )
