@@ -192,14 +192,29 @@ async def get_detection_result(task_id: str):
         with open(result_path, 'r', encoding='utf-8') as f:
             result = json.load(f)
 
-        return {
-            "task_id": task_id,
-            "status": "completed",
-            "subtitles": result['subtitles'],
-            "total_frames": result['total_frames'],
-            "subtitle_count": result['subtitle_count'],
-            "unique_count": result['unique_count']
-        }
+        # 兼容两种格式：OCR (subtitles) 和 Whisper (segments)
+        if result.get('method') == 'whisper':
+            # Whisper 格式
+            segments = result.get('segments', [])
+            return {
+                "task_id": task_id,
+                "status": "completed",
+                "method": "whisper",
+                "subtitles": segments,  # 前端期望这个字段
+                "total_segments": result.get('total_segments', len(segments)),
+                "subtitle_region": result.get('subtitle_region')
+            }
+        else:
+            # OCR 格式
+            return {
+                "task_id": task_id,
+                "status": "completed",
+                "method": "ocr",
+                "subtitles": result['subtitles'],
+                "total_frames": result['total_frames'],
+                "subtitle_count": result['subtitle_count'],
+                "unique_count": result['unique_count']
+            }
 
     except TaskNotFoundException as e:
         raise HTTPException(status_code=404, detail=str(e))
