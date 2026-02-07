@@ -32,3 +32,13 @@ class ProcessConfig(BaseModel):
     mode: ProcessMode = ProcessMode.STTN
     sub_area: Optional[List[int]] = None
     skip_detection: bool = True
+
+
+class TranslationConfig(BaseModel):
+    task_id: str
+    api_key: str
+    api_base: str = "https://ollama.iamdev.cn"
+    model: str = "gpt-oss:20b"
+    target_lang: str = "中文"
+    bg_color: str = "black"  # black or white
+    sub_area: Optional[List[int]] = None

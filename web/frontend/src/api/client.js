@@ -41,6 +41,23 @@ export const getStatus = async (taskId) => {
 }
 
 /**
+ * Start translation
+ */
+export const startTranslation = async (taskId, config) => {
+  const response = await axios.post(`${API_BASE}/translate`, {
+    task_id: taskId,
+    api_key: config.apiKey,
+    api_base: config.apiBase || 'https://ollama.iamdev.cn',
+    model: config.model || 'gpt-oss:20b',
+    target_lang: config.targetLang || '中文',
+    bg_color: config.bgColor || 'black',
+    sub_area: config.sub_area
+  })
+
+  return response.data
+}
+
+/**
  * Download result
  */
 export const downloadResult = (taskId) => {
