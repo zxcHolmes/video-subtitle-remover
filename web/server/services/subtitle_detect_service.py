@@ -89,12 +89,26 @@ class SubtitleDetectService:
             print("Initializing OCR engine...")
             sys.stdout.flush()
 
-            # 直接初始化，不用 cached_property，避免潜在问题
+            # 先检查依赖，避免 import 时卡死
+            print("[OCR] Checking paddle installation...")
+            sys.stdout.flush()
+            try:
+                import paddle
+                print(f"[OCR] Paddle version: {paddle.__version__}")
+                sys.stdout.flush()
+            except ImportError as e:
+                error_msg = f"Paddle not installed: {e}. Please run: pip install paddlepaddle-gpu"
+                print(f"[OCR ERROR] {error_msg}")
+                sys.stdout.flush()
+                raise ImportError(error_msg)
+
+            print("[OCR] Importing PaddleOCR...")
+            sys.stdout.flush()
             from paddleocr import PaddleOCR
-            print("[OCR] Importing PaddleOCR done")
+            print("[OCR] PaddleOCR import successful")
             sys.stdout.flush()
 
-            print("[OCR] Creating PaddleOCR instance with use_gpu=True, show_log=True...")
+            print("[OCR] Creating PaddleOCR instance (use_gpu=True)...")
             sys.stdout.flush()
 
             ocr = PaddleOCR(
@@ -104,7 +118,7 @@ class SubtitleDetectService:
                 show_log=True  # 必须显示日志才能看到在做什么
             )
 
-            print("OCR engine initialized")
+            print("[OCR] PaddleOCR initialized successfully")
             sys.stdout.flush()
 
             # 采样：每秒取1帧

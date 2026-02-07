@@ -63,6 +63,14 @@ async def detect_subtitles(request: dict):
                 )
 
             except Exception as e:
+                # 打印完整的错误堆栈到控制台
+                import traceback
+                print(f"\n{'='*60}")
+                print(f"ERROR in detection thread for task {task_id}:")
+                print(f"{'='*60}")
+                traceback.print_exc()
+                print(f"{'='*60}\n")
+
                 task_manager.update_task(
                     task_id,
                     status=TaskStatus.ERROR,
