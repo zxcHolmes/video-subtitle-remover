@@ -21,9 +21,12 @@ async def start_translation(config: TranslationConfig):
     """
     try:
         # 获取任务
+        api_logger.info(f"Task {config.task_id}: Getting task info")
         task = task_manager.get_task(config.task_id)
+        api_logger.info(f"Task {config.task_id}: Current status={task.status}")
 
         if task.status != TaskStatus.UPLOADED:
+            api_logger.warning(f"Task {config.task_id}: Invalid status for translation - expected UPLOADED, got {task.status}")
             raise HTTPException(
                 status_code=400,
                 detail=f"任务状态不正确: {task.status}"
@@ -40,6 +43,10 @@ async def start_translation(config: TranslationConfig):
             f"{config.task_id}_detected.json"
         )
 
+        api_logger.info(f"Task {config.task_id}: Checking detection files")
+        api_logger.info(f"Task {config.task_id}: confirmed_path={confirmed_path}, exists={os.path.exists(confirmed_path)}")
+        api_logger.info(f"Task {config.task_id}: detected_path={detected_path}, exists={os.path.exists(detected_path)}")
+
         # 判断使用哪种翻译方式
         use_whisper = False
         if os.path.exists(detected_path):
@@ -47,8 +54,10 @@ async def start_translation(config: TranslationConfig):
                 detected_data = json.load(f)
                 if detected_data.get('method') == 'whisper':
                     use_whisper = True
+                    api_logger.info(f"Task {config.task_id}: Detected Whisper method")
 
         if not os.path.exists(confirmed_path) and not (use_whisper and os.path.exists(detected_path)):
+            api_logger.warning(f"Task {config.task_id}: Missing required detection/confirmation files")
             raise HTTPException(
                 status_code=400,
                 detail="请先完成字幕检测和确认"
