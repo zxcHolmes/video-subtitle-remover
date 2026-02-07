@@ -16,6 +16,12 @@ if project_root not in sys.path:
 
 from api import upload, process, status, download, translate, detect
 from services.task_manager import task_manager
+from utils.logger import main_logger, api_logger, service_logger
+
+# Initialize loggers
+main_logger.info("=" * 80)
+main_logger.info("Video Subtitle Remover Web Server Starting")
+main_logger.info("=" * 80)
 
 app = FastAPI(
     title="Video Subtitle Remover Web",
@@ -90,4 +96,14 @@ if os.path.exists(frontend_dist):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    main_logger.info("Starting uvicorn server on http://0.0.0.0:8000")
+    main_logger.info("API Documentation: http://0.0.0.0:8000/docs")
+
+    # Configure uvicorn to not override our logging
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_config=None  # Don't use uvicorn's default logging config
+    )
