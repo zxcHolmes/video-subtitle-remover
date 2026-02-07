@@ -89,9 +89,7 @@ class SubtitleDetectService:
     ) -> Dict:
         """
         检测并识别视频中的字幕
-        使用和去除字幕一样的方式：
-        1. 快速检测所有帧（GPU 加速）
-        2. 只对有字幕的帧做 OCR 识别
+        策略：每秒采样1帧进行检测和识别（字幕不可能1秒换一次）
         """
         try:
             self.status = "processing"
@@ -99,62 +97,58 @@ class SubtitleDetectService:
 
             print(f"Starting subtitle detection for task {self.task_id}")
 
-            # 初始化检测器（会使用 GPU）
-            detector = SubtitleDetect(video_path, sub_area)
-
-            # 第一步：快速检测所有帧，找到有字幕的帧（使用 GPU，很快）
-            print("Step 1: Fast detection (GPU accelerated)...")
-            subtitle_frame_no_box_dict = detector.find_subtitle_frame_no()
-            self.progress = 50
-
-            print(f"Found subtitles in {len(subtitle_frame_no_box_dict)} frames")
-
-            if len(subtitle_frame_no_box_dict) == 0:
-                return {
-                    'subtitles': [],
-                    'total_frames': 0,
-                    'subtitle_count': 0,
-                    'unique_count': 0
-                }
-
-            # 第二步：只对有字幕的帧做 OCR 识别
-            print("Step 2: OCR recognition on detected frames...")
+            # 打开视频获取信息
             cap = cv2.VideoCapture(video_path)
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = int(cap.get(cv2.CAP_PROP_FPS))
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            duration_seconds = frame_count / fps
 
-            # 初始化 OCR 引擎（检测+识别，GPU 加速）
+            print(f"Video: {width}x{height}, {fps} FPS, {frame_count} frames, {duration_seconds:.1f}s")
+            print(f"Sampling strategy: 1 frame per second = ~{int(duration_seconds)} frames to process")
+
+            # 初始化检测器和 OCR（使用 GPU）
+            detector = SubtitleDetect(video_path, sub_area)
             ocr = self.ocr_engine
 
-            # 存储识别结果
+            # 采样：每秒取1帧
             frame_subtitles = {}
-            total_detect_frames = len(subtitle_frame_no_box_dict)
-            processed_frames = 0
+            sample_frames = list(range(0, frame_count, fps))  # 0, fps, 2*fps, 3*fps, ...
+            total_samples = len(sample_frames)
 
-            for frame_no, boxes in subtitle_frame_no_box_dict.items():
-                # 读取指定帧
-                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_no - 1)
+            print(f"Processing {total_samples} sampled frames...")
+
+            for idx, frame_no in enumerate(sample_frames):
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_no)
                 ret, frame = cap.read()
                 if not ret:
                     continue
 
+                # 检测文字框（GPU 加速）
+                dt_boxes, _ = detector.detect_subtitle(frame)
+                if dt_boxes is None or len(dt_boxes) == 0:
+                    self.progress = 100 * (idx + 1) / total_samples
+                    continue
+
+                # 转换坐标
+                coordinates = detector.get_coordinates(dt_boxes.tolist())
+
+                # 过滤并识别
                 frame_subs = []
-                for box in boxes:
+                for box in coordinates:
                     xmin, xmax, ymin, ymax = box
 
                     # 过滤非字幕区域
                     if not self.is_subtitle_region(box, height, width):
                         continue
 
-                    # OCR 识别
+                    # OCR 识别（GPU 加速）
                     try:
                         roi = frame[ymin:ymax, xmin:xmax]
-
-                        # 使用 PaddleOCR 识别（GPU 加速）
                         result = ocr.ocr(roi, cls=True)
+
                         if result and result[0]:
-                            # 提取所有文本行
                             texts = [line[1][0] for line in result[0]]
                             text = ' '.join(texts).strip()
 
@@ -163,24 +157,22 @@ class SubtitleDetectService:
                                     'text': text,
                                     'box': box
                                 })
-                                if processed_frames < 5:  # 只打印前几个
-                                    print(f"Frame {frame_no}: '{text}' at {box}")
                     except Exception as e:
-                        print(f"OCR error at frame {frame_no}, box {box}: {e}")
+                        print(f"OCR error at frame {frame_no}: {e}")
                         continue
 
                 if frame_subs:
                     frame_subtitles[frame_no] = frame_subs
 
-                processed_frames += 1
-                # 更新进度（50-100%）
-                self.progress = 50 + (50 * processed_frames / total_detect_frames)
+                # 更新进度
+                self.progress = 100 * (idx + 1) / total_samples
 
-                if processed_frames % max(1, total_detect_frames // 10) == 0 or processed_frames == total_detect_frames:
-                    print(f"OCR Progress: {processed_frames}/{total_detect_frames} frames ({self.progress:.1f}%)")
+                if (idx + 1) % max(1, total_samples // 10) == 0 or idx + 1 == total_samples:
+                    print(f"Progress: {idx + 1}/{total_samples} frames ({self.progress:.1f}%)")
 
             cap.release()
-            print(f"Detection completed: {len(frame_subtitles)} frames with recognized text")
+            print(f"Found subtitles in {len(frame_subtitles)} sampled frames")
+
 
             # 合并相同字幕
             unique_subtitles = self._merge_duplicates(frame_subtitles)
