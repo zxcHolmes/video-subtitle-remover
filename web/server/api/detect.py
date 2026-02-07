@@ -2,13 +2,16 @@ import os
 import sys
 import threading
 import json
+import logging
 from fastapi import APIRouter, HTTPException
 from models.task import TaskStatus
 from services.task_manager import task_manager
 from services.subtitle_detect_service import SubtitleDetectService
 from services.whisper_subtitle_service import WhisperSubtitleService
 from utils.exceptions import TaskNotFoundException
-from utils.logger import api_logger, log_error
+
+# 使用 uvicorn 的 logger
+logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter()
 
@@ -41,10 +44,10 @@ async def detect_subtitles(request: dict):
         # 根据检测方式创建服务
         if detection_method == 'whisper':
             service = WhisperSubtitleService(task_id=task_id)
-            api_logger.info(f"Task {task_id}: Using Whisper for subtitle detection")
+            logger.info(f"Task {task_id}: Using Whisper for subtitle detection")
         else:
             service = SubtitleDetectService(task_id=task_id)
-            api_logger.info(f"Task {task_id}: Using OCR for subtitle detection")
+            logger.info(f"Task {task_id}: Using OCR for subtitle detection")
 
         # 转换 sub_area
         sub_area_tuple = tuple(sub_area) if sub_area else None
@@ -52,20 +55,20 @@ async def detect_subtitles(request: dict):
         # 在独立线程中检测
         def detect_thread():
             try:
-                api_logger.info(f"Task {task_id}: Detection thread started")
-                api_logger.info(f"Task {task_id}: Method={detection_method}")
-                api_logger.info(f"Task {task_id}: Video={task.file_path}")
-                api_logger.info(f"Task {task_id}: Sub area={sub_area_tuple}")
+                logger.info(f"Task {task_id}: Detection thread started")
+                logger.info(f"Task {task_id}: Method={detection_method}")
+                logger.info(f"Task {task_id}: Video={task.file_path}")
+                logger.info(f"Task {task_id}: Sub area={sub_area_tuple}")
 
                 if detection_method == 'whisper':
-                    api_logger.info(f"Task {task_id}: Calling Whisper detect_and_transcribe")
+                    logger.info(f"Task {task_id}: Calling Whisper detect_and_transcribe")
 
                     result = service.detect_and_transcribe(
                         video_path=task.file_path,
                         sub_area=sub_area_tuple
                     )
                 else:
-                    api_logger.info(f"Task {task_id}: Calling OCR detect_and_recognize")
+                    logger.info(f"Task {task_id}: Calling OCR detect_and_recognize")
 
                     result = service.detect_and_recognize(
                         video_path=task.file_path,
@@ -78,32 +81,32 @@ async def detect_subtitles(request: dict):
                     f"{task_id}_detected.json"
                 )
 
-                api_logger.info(f"Task {task_id}: Saving detection result to {result_path}")
+                logger.info(f"Task {task_id}: Saving detection result to {result_path}")
 
                 with open(result_path, 'w', encoding='utf-8') as f:
                     json.dump(result, f, ensure_ascii=False, indent=2)
 
-                api_logger.info(f"Task {task_id}: Detection result saved successfully")
+                logger.info(f"Task {task_id}: Detection result saved successfully")
 
                 # 打印检测结果摘要
                 if detection_method == 'whisper':
                     segments = result.get('segments', [])
-                    api_logger.info(f"Task {task_id}: ========== Whisper Detection Completed ==========")
-                    api_logger.info(f"Task {task_id}: Total segments: {len(segments)}")
-                    api_logger.info(f"Task {task_id}: Subtitle region: {result.get('subtitle_region')}")
-                    api_logger.info(f"Task {task_id}: All segments:")
+                    logger.info(f"Task {task_id}: ========== Whisper Detection Completed ==========")
+                    logger.info(f"Task {task_id}: Total segments: {len(segments)}")
+                    logger.info(f"Task {task_id}: Subtitle region: {result.get('subtitle_region')}")
+                    logger.info(f"Task {task_id}: All segments:")
 
                     # 打印所有segment，不截断
                     for i, seg in enumerate(segments):
-                        api_logger.info(f"Task {task_id}:   [{i}] {seg.get('start'):.1f}s - {seg.get('end'):.1f}s | {seg.get('text', '')}")
+                        logger.info(f"Task {task_id}:   [{i}] {seg.get('start'):.1f}s - {seg.get('end'):.1f}s | {seg.get('text', '')}")
 
-                    api_logger.info(f"Task {task_id}: ================================================")
+                    logger.info(f"Task {task_id}: ================================================")
                 else:
-                    api_logger.info(f"Task {task_id}: ========== OCR Detection Completed ==========")
-                    api_logger.info(f"Task {task_id}: Total frames: {result.get('total_frames')}")
-                    api_logger.info(f"Task {task_id}: Subtitle count: {result.get('subtitle_count')}")
-                    api_logger.info(f"Task {task_id}: Unique count: {result.get('unique_count')}")
-                    api_logger.info(f"Task {task_id}: ==============================================")
+                    logger.info(f"Task {task_id}: ========== OCR Detection Completed ==========")
+                    logger.info(f"Task {task_id}: Total frames: {result.get('total_frames')}")
+                    logger.info(f"Task {task_id}: Subtitle count: {result.get('subtitle_count')}")
+                    logger.info(f"Task {task_id}: Unique count: {result.get('unique_count')}")
+                    logger.info(f"Task {task_id}: ==============================================")
 
                 # 如果是 Whisper 方式，自动确认（不需要用户手动确认）
                 if detection_method == 'whisper':
@@ -119,7 +122,7 @@ async def detect_subtitles(request: dict):
                             'segments': result.get('segments', []),
                             'subtitle_region': result.get('subtitle_region')
                         }, f, ensure_ascii=False, indent=2)
-                    api_logger.info(f"Task {task_id}: Whisper result auto-confirmed with {len(result.get('segments', []))} segments")
+                    logger.info(f"Task {task_id}: Whisper result auto-confirmed with {len(result.get('segments', []))} segments")
 
                 # 更新任务
                 task_manager.update_task(
@@ -129,7 +132,7 @@ async def detect_subtitles(request: dict):
                 )
 
             except Exception as e:
-                log_error(api_logger, e, f"Detection thread failed for task {task_id}")
+                logger.exception( f"Detection thread failed for task {task_id}")
                 task_manager.update_task(
                     task_id,
                     status=TaskStatus.ERROR,
@@ -156,10 +159,10 @@ async def detect_subtitles(request: dict):
         }
 
     except TaskNotFoundException as e:
-        api_logger.error(f"Task {task_id}: Task not found")
+        logger.error(f"Task {task_id}: Task not found")
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        log_error(api_logger, e, f"Failed to start detection for task {task_id}")
+        logger.exception( f"Failed to start detection for task {task_id}")
         raise HTTPException(status_code=500, detail=f"启动检测失败: {str(e)}")
 
 

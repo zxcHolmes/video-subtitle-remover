@@ -16,7 +16,7 @@ if project_root not in sys.path:
 
 from api import upload, process, status, download, translate, detect
 from services.task_manager import task_manager
-from utils.logger import main_logger, api_logger, service_logger
+import logging, api_logger, service_logger
 
 app = FastAPI(
     title="Video Subtitle Remover Web",
@@ -45,11 +45,12 @@ app.include_router(download.router, prefix="/api", tags=["download"])
 @app.on_event("startup")
 async def startup_event():
     """Startup event - runs when server starts"""
-    main_logger.info("=" * 80)
-    main_logger.info("Video Subtitle Remover Web Server Started")
-    main_logger.info("Server URL: http://0.0.0.0:8000")
-    main_logger.info("API Docs: http://0.0.0.0:8000/docs")
-    main_logger.info("=" * 80)
+    logger = logging.getLogger("uvicorn.error")
+    logger.info("=" * 80)
+    logger.info("Video Subtitle Remover Web Server Started")
+    logger.info("Server URL: http://0.0.0.0:8000")
+    logger.info("API Docs: http://0.0.0.0:8000/docs")
+    logger.info("=" * 80)
 
 
 @app.get("/")
@@ -102,20 +103,10 @@ if os.path.exists(frontend_dist):
 if __name__ == "__main__":
     import uvicorn
 
-    # 完全禁用 uvicorn 的日志配置，使用我们自己的 logger
-    log_config = {
-        "version": 1,
-        "disable_existing_loggers": False,
-        "formatters": {},
-        "handlers": {},
-        "loggers": {}
-    }
-
-    # Run server
+    # 使用 uvicorn 默认日志系统
     uvicorn.run(
         app,
         host="0.0.0.0",
         port=8000,
-        log_config=log_config,
-        access_log=False  # 禁用访问日志
+        log_level="info"
     )

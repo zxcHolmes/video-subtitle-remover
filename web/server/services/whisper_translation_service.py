@@ -13,7 +13,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from backend import config as backend_config
-from utils.logger import service_logger, log_error
+import logging
 
 
 class WhisperTranslationService:
@@ -44,7 +44,7 @@ class WhisperTranslationService:
         segments: [{'id': 0, 'start': 0.0, 'end': 2.5, 'text': '原文'}, ...]
         返回: [{'start': 0.0, 'end': 2.5, 'text': '原文', 'translated': '译文'}, ...]
         """
-        service_logger.info(f"Task {self.task_id}: Starting batch translation for {len(segments)} segments to {target_lang}")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Starting batch translation for {len(segments)} segments to {target_lang}")
 
         # 按字符数分批
         batches = []
@@ -69,13 +69,13 @@ class WhisperTranslationService:
         if current_batch:
             batches.append(current_batch)
 
-        service_logger.info(f"Task {self.task_id}: Split into {len(batches)} batches")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Split into {len(batches)} batches")
 
         # 翻译每一批
         all_translated = []
         for batch_idx, batch in enumerate(batches):
-            service_logger.info(f"Task {self.task_id}: ========== Batch {batch_idx + 1}/{len(batches)} ==========")
-            service_logger.info(f"Task {self.task_id}: Segments in this batch: {len(batch)}")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: ========== Batch {batch_idx + 1}/{len(batches)} ==========")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Segments in this batch: {len(batch)}")
 
             # 构造JSON输入
             batch_input = []
@@ -85,7 +85,7 @@ class WhisperTranslationService:
                     'text': seg['text']
                 })
 
-            service_logger.info(f"Task {self.task_id}: Batch input JSON: {json.dumps(batch_input, ensure_ascii=False)}")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Batch input JSON: {json.dumps(batch_input, ensure_ascii=False)}")
 
             # 调用翻译API
             translated_batch = self.translate_batch(
@@ -113,12 +113,12 @@ class WhisperTranslationService:
                     'translated': translated_text
                 })
 
-                service_logger.info(f"Task {self.task_id}: [{seg_id}] {seg['text']} -> {translated_text}")
+                logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: [{seg_id}] {seg['text']} -> {translated_text}")
 
             # 更新进度 (0-50%)
             self.progress = 50 * (batch_idx + 1) / len(batches)
 
-        service_logger.info(f"Task {self.task_id}: All batches translated - {len(all_translated)} segments total")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: All batches translated - {len(all_translated)} segments total")
         return all_translated
 
     def translate_batch(
@@ -160,9 +160,9 @@ class WhisperTranslationService:
                 'response_format': {'type': 'json_object'}  # OpenAI standard
             }
 
-            service_logger.info(f"Task {self.task_id}: Sending batch translation request with response_format=json_object")
-            service_logger.info(f"Task {self.task_id}: API: {api_base}/v1/chat/completions")
-            service_logger.info(f"Task {self.task_id}: Model: {model}")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Sending batch translation request with response_format=json_object")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: API: {api_base}/v1/chat/completions")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Model: {model}")
 
             response = requests.post(
                 f"{api_base}/v1/chat/completions",
@@ -171,13 +171,13 @@ class WhisperTranslationService:
                 timeout=60  # 批量翻译可能需要更长时间
             )
 
-            service_logger.info(f"Task {self.task_id}: API response status: {response.status_code}")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: API response status: {response.status_code}")
 
             if response.status_code == 200:
                 result = response.json()
                 response_text = result['choices'][0]['message']['content'].strip()
 
-                service_logger.info(f"Task {self.task_id}: API response: {response_text}")
+                logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: API response: {response_text}")
 
                 # 解析JSON响应 - OpenAI response_format 保证返回 JSON object
                 try:
@@ -187,31 +187,31 @@ class WhisperTranslationService:
                     if 'translations' in response_data:
                         translated_batch = response_data['translations']
                     else:
-                        service_logger.error(f"Task {self.task_id}: Missing 'translations' key in response")
-                        service_logger.error(f"Task {self.task_id}: Response keys: {list(response_data.keys())}")
+                        logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: Missing 'translations' key in response")
+                        logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: Response keys: {list(response_data.keys())}")
                         # 返回原文
                         return [{'id': item['id'], 'translated': item['text']} for item in batch]
 
-                    service_logger.info(f"Task {self.task_id}: Successfully parsed {len(translated_batch)} translations")
+                    logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Successfully parsed {len(translated_batch)} translations")
                     return translated_batch
 
                 except json.JSONDecodeError as e:
-                    service_logger.error(f"Task {self.task_id}: Failed to parse JSON response: {e}")
-                    service_logger.error(f"Task {self.task_id}: Response text: {response_text}")
+                    logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: Failed to parse JSON response: {e}")
+                    logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: Response text: {response_text}")
                     # 返回原文
                     return [{'id': item['id'], 'translated': item['text']} for item in batch]
             else:
-                service_logger.error(f"Task {self.task_id}: ========== Translation API Error ==========")
-                service_logger.error(f"Task {self.task_id}: Status code: {response.status_code}")
-                service_logger.error(f"Task {self.task_id}: Response: {response.text}")
-                service_logger.error(f"Task {self.task_id}: =========================================")
+                logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: ========== Translation API Error ==========")
+                logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: Status code: {response.status_code}")
+                logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: Response: {response.text}")
+                logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: =========================================")
                 # 返回原文
                 return [{'id': item['id'], 'translated': item['text']} for item in batch]
 
         except Exception as e:
-            service_logger.error(f"Task {self.task_id}: ========== Batch Translation Exception ==========")
-            log_error(service_logger, e, f"Batch translation failed for task {self.task_id}")
-            service_logger.error(f"Task {self.task_id}: ================================================")
+            logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: ========== Batch Translation Exception ==========")
+            logging.getLogger("uvicorn.error").exception(f"Batch translation failed for task {self.task_id}")
+            logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: ================================================")
             # 返回原文
             return [{'id': item['id'], 'translated': item['text']} for item in batch]
 
@@ -287,13 +287,13 @@ class WhisperTranslationService:
         """
         处理视频，在指定时间段渲染翻译字幕
         """
-        service_logger.info(f"Task {self.task_id}: ========== Starting Video Rendering ==========")
-        service_logger.info(f"Task {self.task_id}: Input video: {video_path}")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: ========== Starting Video Rendering ==========")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Input video: {video_path}")
 
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             error_msg = f"Failed to open video file: {video_path}"
-            service_logger.error(f"Task {self.task_id}: {error_msg}")
+            logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: {error_msg}")
             raise RuntimeError(error_msg)
 
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -301,13 +301,13 @@ class WhisperTranslationService:
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        service_logger.info(f"Task {self.task_id}: Video info - FPS: {fps}, Resolution: {width}x{height}, Total frames: {total_frames}")
-        service_logger.info(f"Task {self.task_id}: Subtitle region: {subtitle_region}")
-        service_logger.info(f"Task {self.task_id}: Segments to render: {len(translated_segments)}")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Video info - FPS: {fps}, Resolution: {width}x{height}, Total frames: {total_frames}")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Subtitle region: {subtitle_region}")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Segments to render: {len(translated_segments)}")
 
         # 创建临时输出文件
         temp_output = output_path.replace('.mp4', '_temp.mp4')
-        service_logger.info(f"Task {self.task_id}: Temp output: {temp_output}")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Temp output: {temp_output}")
 
         # 使用 mp4v 编码器（跨平台兼容）
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -315,13 +315,13 @@ class WhisperTranslationService:
 
         if not out.isOpened():
             error_msg = f"Failed to create VideoWriter for: {temp_output}"
-            service_logger.error(f"Task {self.task_id}: {error_msg}")
+            logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: {error_msg}")
             raise RuntimeError(error_msg)
 
-        service_logger.info(f"Task {self.task_id}: VideoWriter created successfully")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: VideoWriter created successfully")
 
         # 创建时间段到字幕的映射
-        service_logger.info(f"Task {self.task_id}: Creating frame-to-subtitle mapping")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Creating frame-to-subtitle mapping")
 
         time_to_subtitle = {}
         for i, segment in enumerate(translated_segments):
@@ -329,15 +329,15 @@ class WhisperTranslationService:
             end_frame = int(segment['end'] * fps)
             frame_count = end_frame - start_frame + 1
 
-            service_logger.info(f"Task {self.task_id}: Segment {i}: frames {start_frame}-{end_frame} ({frame_count} frames) -> '{segment['translated']}'")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Segment {i}: frames {start_frame}-{end_frame} ({frame_count} frames) -> '{segment['translated']}'")
 
             for frame_no in range(start_frame, end_frame + 1):
                 time_to_subtitle[frame_no] = segment['translated']
 
-        service_logger.info(f"Task {self.task_id}: Mapped {len(time_to_subtitle)} frames with subtitles")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Mapped {len(time_to_subtitle)} frames with subtitles")
 
         # 处理每一帧
-        service_logger.info(f"Task {self.task_id}: Starting frame-by-frame rendering")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Starting frame-by-frame rendering")
 
         frame_no = 0
         subtitle_frame_count = 0
@@ -368,16 +368,16 @@ class WhisperTranslationService:
             # 每10%打印一次进度
             current_percent = int(self.progress - 50)  # 0-50范围
             if current_percent >= last_log_percent + 10:
-                service_logger.info(f"Task {self.task_id}: Rendering progress {frame_no}/{total_frames} frames ({self.progress:.1f}%), subtitles rendered: {subtitle_frame_count}")
+                logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Rendering progress {frame_no}/{total_frames} frames ({self.progress:.1f}%), subtitles rendered: {subtitle_frame_count}")
                 last_log_percent = current_percent
 
         cap.release()
         out.release()
 
-        service_logger.info(f"Task {self.task_id}: Frame rendering completed")
-        service_logger.info(f"Task {self.task_id}: Total frames processed: {frame_no}")
-        service_logger.info(f"Task {self.task_id}: Frames with subtitles: {subtitle_frame_count}")
-        service_logger.info(f"Task {self.task_id}: Starting FFmpeg re-encoding")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Frame rendering completed")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Total frames processed: {frame_no}")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Frames with subtitles: {subtitle_frame_count}")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Starting FFmpeg re-encoding")
 
         # 使用 FFmpeg 重新编码（高质量 + 音频）
         import subprocess
@@ -397,40 +397,40 @@ class WhisperTranslationService:
             output_path
         ]
 
-        service_logger.info(f"Task {self.task_id}: FFmpeg command: {' '.join(ffmpeg_cmd)}")
+        logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: FFmpeg command: {' '.join(ffmpeg_cmd)}")
 
         try:
             result = subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
-            service_logger.info(f"Task {self.task_id}: FFmpeg encoding completed successfully")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: FFmpeg encoding completed successfully")
 
             if result.stdout:
-                service_logger.info(f"Task {self.task_id}: FFmpeg stdout: {result.stdout.decode()}")
+                logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: FFmpeg stdout: {result.stdout.decode()}")
 
             # 检查输出文件
             if os.path.exists(output_path):
                 output_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
-                service_logger.info(f"Task {self.task_id}: Final output file: {output_path} ({output_size:.2f} MB)")
+                logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Final output file: {output_path} ({output_size:.2f} MB)")
             else:
-                service_logger.error(f"Task {self.task_id}: FFmpeg succeeded but output file does not exist!")
+                logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: FFmpeg succeeded but output file does not exist!")
 
         except subprocess.CalledProcessError as e:
-            service_logger.error(f"Task {self.task_id}: ========== FFmpeg Failed ==========")
-            service_logger.error(f"Task {self.task_id}: Return code: {e.returncode}")
-            service_logger.error(f"Task {self.task_id}: stderr: {e.stderr.decode()}")
+            logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: ========== FFmpeg Failed ==========")
+            logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: Return code: {e.returncode}")
+            logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: stderr: {e.stderr.decode()}")
             if e.stdout:
-                service_logger.error(f"Task {self.task_id}: stdout: {e.stdout.decode()}")
-            service_logger.error(f"Task {self.task_id}: ===================================")
+                logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: stdout: {e.stdout.decode()}")
+            logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: ===================================")
 
             # 如果 FFmpeg 失败，使用临时文件作为输出
-            service_logger.info(f"Task {self.task_id}: Falling back to temp file")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Falling back to temp file")
             import shutil
             shutil.move(temp_output, output_path)
-            service_logger.info(f"Task {self.task_id}: Moved {temp_output} -> {output_path}")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Moved {temp_output} -> {output_path}")
         else:
             # 删除临时文件
             if os.path.exists(temp_output):
                 os.remove(temp_output)
-                service_logger.info(f"Task {self.task_id}: Removed temp file: {temp_output}")
+                logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Removed temp file: {temp_output}")
 
         return output_path
 
@@ -452,10 +452,10 @@ class WhisperTranslationService:
             self.status = "processing"
             self.progress = 0
 
-            service_logger.info(f"Task {self.task_id}: Starting translation and rendering")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Starting translation and rendering")
 
             # 读取 Whisper 识别结果
-            service_logger.info(f"Task {self.task_id}: Loading Whisper result from {whisper_result_path}")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Loading Whisper result from {whisper_result_path}")
 
             with open(whisper_result_path, 'r', encoding='utf-8') as f:
                 whisper_result = json.load(f)
@@ -463,20 +463,20 @@ class WhisperTranslationService:
             subtitle_region = whisper_result.get('subtitle_region')
             segments = whisper_result.get('segments', [])
 
-            service_logger.info(f"Task {self.task_id}: Loaded {len(segments)} segments, region={subtitle_region}")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Loaded {len(segments)} segments, region={subtitle_region}")
 
             if not subtitle_region:
                 error_msg = "No subtitle region found in Whisper result"
-                service_logger.error(f"Task {self.task_id}: {error_msg}")
+                logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: {error_msg}")
                 raise ValueError(error_msg)
 
             if not segments:
                 error_msg = "No subtitle segments found in Whisper result"
-                service_logger.error(f"Task {self.task_id}: {error_msg}")
+                logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: {error_msg}")
                 raise ValueError(error_msg)
 
             # 步骤1: 翻译所有片段
-            service_logger.info(f"Task {self.task_id}: Step 1 - Translating {len(segments)} segments")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Step 1 - Translating {len(segments)} segments")
 
             translated_segments = self.batch_translate_segments(
                 segments,
@@ -486,10 +486,10 @@ class WhisperTranslationService:
                 model
             )
 
-            service_logger.info(f"Task {self.task_id}: Step 1 completed - {len(translated_segments)} segments translated")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Step 1 completed - {len(translated_segments)} segments translated")
 
             # 步骤2: 渲染到视频
-            service_logger.info(f"Task {self.task_id}: Step 2 - Rendering to video")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Step 2 - Rendering to video")
 
             output_file = self.process_video_with_translations(
                 video_path,
@@ -502,29 +502,29 @@ class WhisperTranslationService:
             self.status = "completed"
             self.progress = 100
 
-            service_logger.info(f"Task {self.task_id}: ========== Translation & Rendering Summary ==========")
-            service_logger.info(f"Task {self.task_id}: Input video: {video_path}")
-            service_logger.info(f"Task {self.task_id}: Output video: {output_file}")
-            service_logger.info(f"Task {self.task_id}: Segments translated: {len(translated_segments)}")
-            service_logger.info(f"Task {self.task_id}: Target language: {target_lang}")
-            service_logger.info(f"Task {self.task_id}: Subtitle region: {subtitle_region}")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: ========== Translation & Rendering Summary ==========")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Input video: {video_path}")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Output video: {output_file}")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Segments translated: {len(translated_segments)}")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Target language: {target_lang}")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Subtitle region: {subtitle_region}")
 
             if os.path.exists(output_file):
                 file_size = os.path.getsize(output_file) / (1024 * 1024)  # MB
-                service_logger.info(f"Task {self.task_id}: Output file size: {file_size:.2f} MB")
+                logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: Output file size: {file_size:.2f} MB")
             else:
-                service_logger.error(f"Task {self.task_id}: Output file does not exist!")
+                logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: Output file does not exist!")
 
-            service_logger.info(f"Task {self.task_id}: =====================================================")
+            logging.getLogger("uvicorn.error").info(f"Task {self.task_id}: =====================================================")
 
             return output_file
 
         except Exception as e:
             self.status = "error"
             self.error = str(e)
-            service_logger.error(f"Task {self.task_id}: ========== Translation & Rendering Failed ==========")
-            log_error(service_logger, e, f"Translation and rendering failed for task {self.task_id}")
-            service_logger.error(f"Task {self.task_id}: ====================================================")
+            logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: ========== Translation & Rendering Failed ==========")
+            logging.getLogger("uvicorn.error").exception(f"Translation and rendering failed for task {self.task_id}")
+            logging.getLogger("uvicorn.error").error(f"Task {self.task_id}: ====================================================")
             raise e
 
     def get_progress(self) -> dict:
