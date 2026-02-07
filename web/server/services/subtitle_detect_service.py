@@ -28,31 +28,38 @@ class SubtitleDetectService:
     @cached_property
     def ocr_engine(self):
         """初始化完整的 OCR 引擎（检测+识别，使用 GPU）"""
+        print("[OCR] Starting OCR engine initialization...")
+
         from paddleocr import PaddleOCR
 
         # 根据配置决定是否使用 GPU
         use_gpu = False
         if config.ONNX_PROVIDERS:
-            print(f"Using GPU providers: {config.ONNX_PROVIDERS}")
+            print(f"[OCR] GPU providers available: {config.ONNX_PROVIDERS}")
 
         # 检查是否有 CUDA
         try:
+            print("[OCR] Checking for CUDA...")
             import paddle
             if paddle.is_compiled_with_cuda():
                 use_gpu = True
-                print("CUDA available, using GPU for OCR")
-        except:
-            pass
+                print("[OCR] CUDA available, using GPU for OCR")
+            else:
+                print("[OCR] CUDA not available, using CPU")
+        except Exception as e:
+            print(f"[OCR] Error checking CUDA: {e}")
 
-        print(f"Initializing PaddleOCR (GPU: {use_gpu})...")
+        print(f"[OCR] Creating PaddleOCR instance (use_gpu={use_gpu})...")
+
+        # 第一次运行会下载模型，可能很慢，显示日志
         ocr = PaddleOCR(
             use_angle_cls=True,
             lang='ch',
             use_gpu=use_gpu,
-            show_log=False,
+            show_log=True,  # 改为 True，看看卡在哪里
             det_model_dir=str(config.DET_MODEL_PATH) if hasattr(config, 'DET_MODEL_PATH') else None
         )
-        print("PaddleOCR initialized")
+        print("[OCR] PaddleOCR initialized successfully")
         return ocr
 
     def is_subtitle_region(
@@ -108,9 +115,15 @@ class SubtitleDetectService:
             print(f"Video: {width}x{height}, {fps} FPS, {frame_count} frames, {duration_seconds:.1f}s")
             print(f"Sampling strategy: 1 frame per second = ~{int(duration_seconds)} frames to process")
 
-            # 初始化检测器和 OCR（使用 GPU）
+            # 初始化检测器（使用 GPU）
+            print("Initializing SubtitleDetect...")
             detector = SubtitleDetect(video_path, sub_area)
+            print("SubtitleDetect initialized")
+
+            # 初始化 OCR（使用 GPU）
+            print("Initializing OCR engine...")
             ocr = self.ocr_engine
+            print("OCR engine initialized")
 
             # 采样：每秒取1帧
             frame_subtitles = {}
