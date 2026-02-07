@@ -133,10 +133,10 @@ class WhisperTranslationService:
         text: str,
         subtitle_region: Tuple[int, int, int, int],
         bg_color: str = 'black',
-        font_size: int = 32
+        font_size: int = 28
     ) -> np.ndarray:
         """
-        在帧上渲染字幕
+        在帧上渲染字幕（添加在下方，不覆盖原字幕）
         subtitle_region: (ymin, ymax, xmin, xmax)
         """
         ymin, ymax, xmin, xmax = subtitle_region
@@ -146,9 +146,14 @@ class WhisperTranslationService:
         img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(img_pil)
 
-        # 绘制背景矩形
-        bg_rgb = (0, 0, 0) if bg_color == 'black' else (255, 255, 255)
-        draw.rectangle([xmin, ymin, xmax, ymax], fill=bg_rgb)
+        # 绘制半透明背景（让原视频内容可见，但字幕清晰）
+        bg_rgb = (0, 0, 0, 180) if bg_color == 'black' else (255, 255, 255, 180)
+        overlay = Image.new('RGBA', img_pil.size, (0, 0, 0, 0))
+        overlay_draw = ImageDraw.Draw(overlay)
+        overlay_draw.rectangle([xmin, ymin, xmax, ymax], fill=bg_rgb)
+        img_pil = img_pil.convert('RGBA')
+        img_pil = Image.alpha_composite(img_pil, overlay)
+        draw = ImageDraw.Draw(img_pil)
 
         # 加载中文字体
         try:
