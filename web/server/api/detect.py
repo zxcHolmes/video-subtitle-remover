@@ -91,11 +91,15 @@ async def detect_subtitles(request: dict):
                         os.path.dirname(task.file_path),
                         f"{task_id}_confirmed.json"
                     )
+                    # 将完整的 Whisper 结果写入 confirmed 文件
                     with open(confirmed_path, 'w', encoding='utf-8') as f:
                         json.dump({
                             'method': 'whisper',
-                            'auto_confirmed': True
+                            'auto_confirmed': True,
+                            'segments': result.get('segments', []),
+                            'subtitle_region': result.get('subtitle_region')
                         }, f, ensure_ascii=False, indent=2)
+                    api_logger.info(f"Task {task_id}: Whisper result auto-confirmed with {len(result.get('segments', []))} segments")
 
                 # 更新任务
                 task_manager.update_task(
@@ -185,14 +189,16 @@ async def get_detection_result(task_id: str):
 
         # 兼容两种格式：OCR (subtitles) 和 Whisper (segments)
         if result.get('method') == 'whisper':
-            # Whisper 格式
+            # Whisper 格式 - 转换为前端期望的格式
             segments = result.get('segments', [])
             return {
                 "task_id": task_id,
                 "status": "completed",
                 "method": "whisper",
                 "subtitles": segments,  # 前端期望这个字段
-                "total_segments": result.get('total_segments', len(segments)),
+                "total_frames": 0,  # Whisper 不使用帧，设为0
+                "subtitle_count": len(segments),
+                "unique_count": len(segments),  # Whisper 每个segment都是唯一的
                 "subtitle_region": result.get('subtitle_region')
             }
         else:

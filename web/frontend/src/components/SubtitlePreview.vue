@@ -60,13 +60,14 @@
                 <div class="subtitle-text">{{ scope.row.text }}</div>
               </template>
             </el-table-column>
-            <el-table-column prop="frame_count" label="出现帧数" width="100" />
-            <el-table-column label="首次出现" width="100">
+            <!-- OCR模式：显示帧数 -->
+            <el-table-column v-if="!isWhisperMode" prop="frame_count" label="出现帧数" width="100" />
+            <el-table-column v-if="!isWhisperMode" label="首次出现" width="100">
               <template #default="scope">
                 第 {{ scope.row.frames[0] }} 帧
               </template>
             </el-table-column>
-            <el-table-column label="位置" width="180">
+            <el-table-column v-if="!isWhisperMode" label="位置" width="180">
               <template #default="scope">
                 <el-tag size="small">
                   Y: {{ scope.row.box[2] }}-{{ scope.row.box[3] }}
@@ -74,6 +75,23 @@
                 <el-tag size="small" class="ml-1">
                   X: {{ scope.row.box[0] }}-{{ scope.row.box[1] }}
                 </el-tag>
+              </template>
+            </el-table-column>
+
+            <!-- Whisper模式：显示时间段 -->
+            <el-table-column v-if="isWhisperMode" label="开始时间" width="120">
+              <template #default="scope">
+                {{ formatTime(scope.row.start) }}
+              </template>
+            </el-table-column>
+            <el-table-column v-if="isWhisperMode" label="结束时间" width="120">
+              <template #default="scope">
+                {{ formatTime(scope.row.end) }}
+              </template>
+            </el-table-column>
+            <el-table-column v-if="isWhisperMode" label="时长" width="100">
+              <template #default="scope">
+                {{ (scope.row.end - scope.row.start).toFixed(1) }}s
               </template>
             </el-table-column>
           </el-table>
@@ -112,6 +130,18 @@ const loading = ref(false)
 const error = ref(null)
 const detectionResult = ref(null)
 const selectedSubtitles = ref([])
+
+// 是否为 Whisper 模式
+const isWhisperMode = computed(() => {
+  return detectionResult.value?.method === 'whisper'
+})
+
+// 格式化时间（秒 -> MM:SS）
+const formatTime = (seconds) => {
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+}
 
 // 为字幕添加选中状态
 const subtitlesWithSelection = computed(() => {
