@@ -256,6 +256,9 @@ const startDetection = async () => {
   }
 
   detecting.value = true
+  detectionCompleted.value = false
+  subtitlesConfirmed.value = false
+
   try {
     const result = await detectSubtitles(props.taskId, config.sub_area)
     ElMessage.success('开始识别字幕')
@@ -263,6 +266,7 @@ const startDetection = async () => {
     emit('detection-started', result)
   } catch (error) {
     ElMessage.error('识别失败: ' + (error.response?.data?.detail || error.message))
+    detectionCompleted.value = false
   } finally {
     detecting.value = false
   }

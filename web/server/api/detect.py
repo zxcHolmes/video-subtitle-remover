@@ -102,6 +102,14 @@ async def get_detection_result(task_id: str):
     try:
         task = task_manager.get_task(task_id)
 
+        # 检查任务状态
+        if task.status == TaskStatus.ERROR:
+            return {
+                "task_id": task_id,
+                "status": "error",
+                "message": task.message or "检测失败"
+            }
+
         # 检查检测结果文件
         result_path = os.path.join(
             os.path.dirname(task.file_path),
@@ -109,11 +117,22 @@ async def get_detection_result(task_id: str):
         )
 
         if not os.path.exists(result_path):
-            return {
-                "task_id": task_id,
-                "status": "detecting",
-                "message": "正在检测中..."
-            }
+            # 获取服务进度
+            service = task_manager.get_service(task_id)
+            if service:
+                progress_info = service.get_progress()
+                return {
+                    "task_id": task_id,
+                    "status": "detecting",
+                    "message": progress_info.get('message', '正在检测中...'),
+                    "progress": progress_info.get('progress', 0)
+                }
+            else:
+                return {
+                    "task_id": task_id,
+                    "status": "detecting",
+                    "message": "正在检测中..."
+                }
 
         # 读取结果
         with open(result_path, 'r', encoding='utf-8') as f:

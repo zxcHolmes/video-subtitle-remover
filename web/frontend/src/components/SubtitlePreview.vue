@@ -13,10 +13,20 @@
       <div v-if="loading" class="loading-state">
         <el-icon class="is-loading"><Loading /></el-icon>
         <p>正在识别字幕...</p>
+        <p class="tip">第一次运行可能需要下载模型，请耐心等待</p>
       </div>
 
       <div v-else-if="error" class="error-state">
-        <el-alert type="error" :title="error" :closable="false" />
+        <el-alert type="error" :closable="false">
+          <template #title>
+            识别失败
+          </template>
+          <div>{{ error }}</div>
+        </el-alert>
+        <div class="error-actions">
+          <el-button type="primary" @click="retry">重试</el-button>
+          <el-button @click="cancel">返回</el-button>
+        </div>
       </div>
 
       <div v-else-if="detectionResult" class="result-content">
@@ -132,11 +142,29 @@ const loadDetectionResult = async () => {
       // 默认全选
       selectedSubtitles.value = result.subtitles
       loading.value = false
+    } else if (result.status === 'error') {
+      // 检测失败
+      error.value = result.message || '检测失败'
+      loading.value = false
     }
   } catch (err) {
-    error.value = err.response?.data?.detail || err.message
+    error.value = err.response?.data?.detail || err.message || '网络错误，请重试'
     loading.value = false
   }
+}
+
+// 重试
+const retry = () => {
+  error.value = null
+  detectionResult.value = null
+  loadDetectionResult()
+}
+
+// 取消
+const cancel = () => {
+  error.value = null
+  detectionResult.value = null
+  emit('cancelled')
 }
 
 // 处理选择变化
@@ -221,6 +249,20 @@ defineExpose({
 .loading-state p {
   margin-top: 10px;
   color: #909399;
+}
+
+.loading-state .tip {
+  font-size: 12px;
+  color: #999;
+  margin-top: 5px;
+}
+
+.error-actions {
+  margin-top: 20px;
+}
+
+.error-actions .el-button {
+  margin: 0 10px;
 }
 
 .result-content {
