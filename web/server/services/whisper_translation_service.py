@@ -140,14 +140,16 @@ class WhisperTranslationService:
                 'Content-Type': 'application/json'
             }
 
-            # 构造prompt
+            # 构造prompt - 要求返回JSON格式
             prompt = f"""请将以下JSON数组中的所有文本翻译成{target_lang}。
-保持JSON格式，只翻译"text"字段，输出格式为：[{{"id": 0, "translated": "翻译结果"}}, ...]
 
-输入JSON：
+输入JSON数组：
 {json.dumps(batch, ensure_ascii=False)}
 
-输出JSON："""
+要求：
+1. 保持原有的id
+2. 只翻译text字段的内容
+3. 返回JSON数组格式：[{{"id": 0, "translated": "翻译结果"}}, {{"id": 1, "translated": "翻译结果"}}, ...]"""
 
             data = {
                 'model': model,
@@ -157,9 +159,17 @@ class WhisperTranslationService:
                 'temperature': 0.3
             }
 
+            # 尝试添加 response_format（某些API可能不支持）
+            try:
+                data['response_format'] = {'type': 'json_object'}
+                service_logger.info(f"Task {self.task_id}: Using response_format=json_object")
+            except:
+                pass
+
             service_logger.info(f"Task {self.task_id}: Sending batch translation request")
             service_logger.info(f"Task {self.task_id}: API: {api_base}/v1/chat/completions")
             service_logger.info(f"Task {self.task_id}: Model: {model}")
+            service_logger.info(f"Task {self.task_id}: Request data: {json.dumps(data, ensure_ascii=False)}")
 
             response = requests.post(
                 f"{api_base}/v1/chat/completions",
@@ -174,25 +184,39 @@ class WhisperTranslationService:
                 result = response.json()
                 response_text = result['choices'][0]['message']['content'].strip()
 
-                service_logger.info(f"Task {self.task_id}: API response text: {response_text}")
+                service_logger.info(f"Task {self.task_id}: API response: {response_text}")
 
                 # 解析JSON响应
                 try:
-                    # 尝试提取JSON（可能被包裹在markdown代码块中）
-                    if '```json' in response_text:
-                        json_start = response_text.find('[')
-                        json_end = response_text.rfind(']') + 1
-                        response_text = response_text[json_start:json_end]
-                    elif '```' in response_text:
-                        json_start = response_text.find('[')
-                        json_end = response_text.rfind(']') + 1
-                        response_text = response_text[json_start:json_end]
+                    response_data = json.loads(response_text)
 
-                    translated_batch = json.loads(response_text)
+                    # response_format json_object 返回的可能是对象包裹数组
+                    # 例如: {"translations": [...]} 或直接是 [...]
+                    if isinstance(response_data, list):
+                        translated_batch = response_data
+                    elif isinstance(response_data, dict):
+                        # 尝试找到数组字段
+                        if 'translations' in response_data:
+                            translated_batch = response_data['translations']
+                        elif 'results' in response_data:
+                            translated_batch = response_data['results']
+                        elif 'data' in response_data:
+                            translated_batch = response_data['data']
+                        else:
+                            # 找第一个数组类型的值
+                            for value in response_data.values():
+                                if isinstance(value, list):
+                                    translated_batch = value
+                                    break
+                            else:
+                                raise ValueError("No array found in response JSON object")
+                    else:
+                        raise ValueError(f"Unexpected response type: {type(response_data)}")
+
                     service_logger.info(f"Task {self.task_id}: Successfully parsed {len(translated_batch)} translations")
                     return translated_batch
 
-                except json.JSONDecodeError as e:
+                except (json.JSONDecodeError, ValueError) as e:
                     service_logger.error(f"Task {self.task_id}: Failed to parse JSON response: {e}")
                     service_logger.error(f"Task {self.task_id}: Response text: {response_text}")
                     # 返回原文
