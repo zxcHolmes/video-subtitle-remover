@@ -43,6 +43,17 @@
 
         <!-- 翻译字幕模式的配置 -->
         <template v-if="config.processType === 'translate'">
+          <el-form-item label="识别方式">
+            <el-radio-group v-model="config.detectionMethod">
+              <el-radio label="ocr">OCR 逐帧识别</el-radio>
+              <el-radio label="whisper">Whisper 语音识别 (推荐)</el-radio>
+            </el-radio-group>
+            <div class="tip">
+              <span v-if="config.detectionMethod === 'ocr'">使用 PaddleOCR 逐帧识别字幕文字</span>
+              <span v-if="config.detectionMethod === 'whisper'">使用 Faster Whisper 识别语音，更准确且不受字幕动画影响</span>
+            </div>
+          </el-form-item>
+
           <el-form-item label="API Key" required>
             <el-input
               v-model="config.apiKey"
@@ -188,6 +199,7 @@ const config = reactive({
   mode: 'sttn',
   skip_detection: true,
   // 翻译字幕配置
+  detectionMethod: 'whisper',  // 'ocr' or 'whisper'
   apiKey: '',
   apiBase: 'https://ollama.iamdev.cn',
   model: 'gpt-oss:20b',
@@ -260,7 +272,7 @@ const startDetection = async () => {
   subtitlesConfirmed.value = false
 
   try {
-    const result = await detectSubtitles(props.taskId, config.sub_area)
+    const result = await detectSubtitles(props.taskId, config.sub_area, config.detectionMethod)
     ElMessage.success('开始识别字幕')
     detectionCompleted.value = true
     emit('detection-started', result)

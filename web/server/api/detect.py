@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from models.task import TaskStatus
 from services.task_manager import task_manager
 from services.subtitle_detect_service import SubtitleDetectService
+from services.whisper_subtitle_service import WhisperSubtitleService
 from utils.exceptions import TaskNotFoundException
 
 router = APIRouter()
@@ -14,11 +15,14 @@ router = APIRouter()
 async def detect_subtitles(request: dict):
     """
     检测视频中的字幕（阶段1）
-    返回识别结果供用户确认
+    支持两种方式：
+    1. OCR: PaddleOCR 逐帧识别
+    2. Whisper: Faster Whisper 语音识别
     """
     try:
         task_id = request.get('task_id')
         sub_area = request.get('sub_area')
+        detection_method = request.get('detection_method', 'ocr')  # 'ocr' or 'whisper'
 
         if not task_id:
             raise HTTPException(status_code=400, detail="缺少 task_id")
@@ -32,8 +36,13 @@ async def detect_subtitles(request: dict):
                 detail=f"任务状态不正确: {task.status}"
             )
 
-        # 创建检测服务
-        service = SubtitleDetectService(task_id=task_id)
+        # 根据检测方式创建服务
+        if detection_method == 'whisper':
+            service = WhisperSubtitleService(task_id=task_id)
+            print(f"[API] Using Whisper for subtitle detection")
+        else:
+            service = SubtitleDetectService(task_id=task_id)
+            print(f"[API] Using OCR for subtitle detection")
 
         # 转换 sub_area
         sub_area_tuple = tuple(sub_area) if sub_area else None
@@ -41,10 +50,16 @@ async def detect_subtitles(request: dict):
         # 在独立线程中检测
         def detect_thread():
             try:
-                result = service.detect_and_recognize(
-                    video_path=task.file_path,
-                    sub_area=sub_area_tuple
-                )
+                if detection_method == 'whisper':
+                    result = service.detect_and_transcribe(
+                        video_path=task.file_path,
+                        sub_area=sub_area_tuple
+                    )
+                else:
+                    result = service.detect_and_recognize(
+                        video_path=task.file_path,
+                        sub_area=sub_area_tuple
+                    )
 
                 # 保存检测结果
                 result_path = os.path.join(

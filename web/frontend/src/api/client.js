@@ -43,10 +43,11 @@ export const getStatus = async (taskId) => {
 /**
  * Detect subtitles (Stage 1)
  */
-export const detectSubtitles = async (taskId, subArea) => {
+export const detectSubtitles = async (taskId, subArea, detectionMethod = 'ocr') => {
   const response = await axios.post(`${API_BASE}/detect`, {
     task_id: taskId,
-    sub_area: subArea
+    sub_area: subArea,
+    detection_method: detectionMethod
   })
   return response.data
 }
