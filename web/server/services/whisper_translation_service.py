@@ -31,73 +31,6 @@ class WhisperTranslationService:
         self.status = "pending"
         self.error = None
 
-    def translate_text(
-        self,
-        text: str,
-        target_lang: str,
-        api_key: str,
-        api_base: str,
-        model: str
-    ) -> str:
-        """翻译单条文本"""
-        try:
-            service_logger.info(f"Task {self.task_id}: Calling translation API")
-            service_logger.info(f"Task {self.task_id}: API base: {api_base}")
-            service_logger.info(f"Task {self.task_id}: Model: {model}")
-            service_logger.info(f"Task {self.task_id}: Original text: {text}")
-
-            headers = {
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json'
-            }
-
-            # 使用 JSON 模式确保输出格式
-            prompt = f"""请将以下文本翻译成{target_lang}，只返回翻译结果，不要添加任何解释：
-
-原文：{text}
-
-翻译："""
-
-            data = {
-                'model': model,
-                'messages': [
-                    {'role': 'user', 'content': prompt}
-                ],
-                'temperature': 0.3
-            }
-
-            service_logger.info(f"Task {self.task_id}: Sending request to {api_base}/v1/chat/completions")
-
-            response = requests.post(
-                f"{api_base}/v1/chat/completions",
-                headers=headers,
-                json=data,
-                timeout=30
-            )
-
-            service_logger.info(f"Task {self.task_id}: API response status: {response.status_code}")
-
-            if response.status_code == 200:
-                result = response.json()
-                translated = result['choices'][0]['message']['content'].strip()
-                service_logger.info(f"Task {self.task_id}: Translation successful: {translated}")
-                return translated
-            else:
-                service_logger.error(f"Task {self.task_id}: ========== Translation API Error ==========")
-                service_logger.error(f"Task {self.task_id}: Status code: {response.status_code}")
-                service_logger.error(f"Task {self.task_id}: Response body: {response.text}")
-                service_logger.error(f"Task {self.task_id}: =========================================")
-                return text  # 翻译失败，返回原文
-
-        except Exception as e:
-            service_logger.error(f"Task {self.task_id}: ========== Translation Exception ==========")
-            service_logger.error(f"Task {self.task_id}: Exception type: {type(e).__name__}")
-            service_logger.error(f"Task {self.task_id}: Exception message: {str(e)}")
-            import traceback
-            service_logger.error(f"Task {self.task_id}: Traceback:\n{traceback.format_exc()}")
-            service_logger.error(f"Task {self.task_id}: ========================================")
-            return text
-
     def batch_translate_segments(
         self,
         segments: List[Dict],
@@ -107,42 +40,177 @@ class WhisperTranslationService:
         model: str
     ) -> List[Dict]:
         """
-        批量翻译所有片段
-        segments: [{'start': 0.0, 'end': 2.5, 'text': '原文'}, ...]
+        批量翻译所有片段（每批最多2000字符）
+        segments: [{'id': 0, 'start': 0.0, 'end': 2.5, 'text': '原文'}, ...]
         返回: [{'start': 0.0, 'end': 2.5, 'text': '原文', 'translated': '译文'}, ...]
         """
-        service_logger.info(f"Task {self.task_id}: Translating {len(segments)} segments to {target_lang}")
+        service_logger.info(f"Task {self.task_id}: Starting batch translation for {len(segments)} segments to {target_lang}")
 
-        translated_segments = []
-        total = len(segments)
+        # 按字符数分批
+        batches = []
+        current_batch = []
+        current_length = 0
+        MAX_BATCH_LENGTH = 2000
 
-        for i, segment in enumerate(segments):
-            original_text = segment['text']
+        for segment in segments:
+            text = segment['text']
+            text_length = len(text)
 
-            service_logger.info(f"Task {self.task_id}: [{i+1}/{total}] Translating: {original_text}")
+            # 如果加入当前segment会超过限制，开始新批次
+            if current_length + text_length > MAX_BATCH_LENGTH and current_batch:
+                batches.append(current_batch)
+                current_batch = []
+                current_length = 0
 
-            translated_text = self.translate_text(
-                original_text,
+            current_batch.append(segment)
+            current_length += text_length
+
+        # 添加最后一批
+        if current_batch:
+            batches.append(current_batch)
+
+        service_logger.info(f"Task {self.task_id}: Split into {len(batches)} batches")
+
+        # 翻译每一批
+        all_translated = []
+        for batch_idx, batch in enumerate(batches):
+            service_logger.info(f"Task {self.task_id}: ========== Batch {batch_idx + 1}/{len(batches)} ==========")
+            service_logger.info(f"Task {self.task_id}: Segments in this batch: {len(batch)}")
+
+            # 构造JSON输入
+            batch_input = []
+            for seg in batch:
+                batch_input.append({
+                    'id': seg.get('id', seg.get('start')),  # 使用id或start作为标识
+                    'text': seg['text']
+                })
+
+            service_logger.info(f"Task {self.task_id}: Batch input JSON: {json.dumps(batch_input, ensure_ascii=False)}")
+
+            # 调用翻译API
+            translated_batch = self.translate_batch(
+                batch_input,
                 target_lang,
                 api_key,
                 api_base,
                 model
             )
 
-            translated_segments.append({
-                'start': segment['start'],
-                'end': segment['end'],
-                'text': original_text,
-                'translated': translated_text
-            })
+            # 合并翻译结果
+            for seg in batch:
+                seg_id = seg.get('id', seg.get('start'))
+                # 在翻译结果中找到对应的翻译
+                translated_text = seg['text']  # 默认保留原文
+                for trans in translated_batch:
+                    if trans['id'] == seg_id:
+                        translated_text = trans['translated']
+                        break
 
-            service_logger.info(f"Task {self.task_id}: [{i+1}/{total}] Translated: {translated_text}")
+                all_translated.append({
+                    'start': seg['start'],
+                    'end': seg['end'],
+                    'text': seg['text'],
+                    'translated': translated_text
+                })
+
+                service_logger.info(f"Task {self.task_id}: [{seg_id}] {seg['text']} -> {translated_text}")
 
             # 更新进度 (0-50%)
-            self.progress = 50 * (i + 1) / total
+            self.progress = 50 * (batch_idx + 1) / len(batches)
 
-        service_logger.info(f"Task {self.task_id}: Translation completed - {len(translated_segments)} segments translated")
-        return translated_segments
+        service_logger.info(f"Task {self.task_id}: All batches translated - {len(all_translated)} segments total")
+        return all_translated
+
+    def translate_batch(
+        self,
+        batch: List[Dict],
+        target_lang: str,
+        api_key: str,
+        api_base: str,
+        model: str
+    ) -> List[Dict]:
+        """
+        翻译一批segments
+        输入: [{'id': 0, 'text': '原文'}, ...]
+        输出: [{'id': 0, 'translated': '译文'}, ...]
+        """
+        try:
+            headers = {
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            }
+
+            # 构造prompt
+            prompt = f"""请将以下JSON数组中的所有文本翻译成{target_lang}。
+保持JSON格式，只翻译"text"字段，输出格式为：[{{"id": 0, "translated": "翻译结果"}}, ...]
+
+输入JSON：
+{json.dumps(batch, ensure_ascii=False)}
+
+输出JSON："""
+
+            data = {
+                'model': model,
+                'messages': [
+                    {'role': 'user', 'content': prompt}
+                ],
+                'temperature': 0.3
+            }
+
+            service_logger.info(f"Task {self.task_id}: Sending batch translation request")
+            service_logger.info(f"Task {self.task_id}: API: {api_base}/v1/chat/completions")
+            service_logger.info(f"Task {self.task_id}: Model: {model}")
+
+            response = requests.post(
+                f"{api_base}/v1/chat/completions",
+                headers=headers,
+                json=data,
+                timeout=60  # 批量翻译可能需要更长时间
+            )
+
+            service_logger.info(f"Task {self.task_id}: API response status: {response.status_code}")
+
+            if response.status_code == 200:
+                result = response.json()
+                response_text = result['choices'][0]['message']['content'].strip()
+
+                service_logger.info(f"Task {self.task_id}: API response text: {response_text}")
+
+                # 解析JSON响应
+                try:
+                    # 尝试提取JSON（可能被包裹在markdown代码块中）
+                    if '```json' in response_text:
+                        json_start = response_text.find('[')
+                        json_end = response_text.rfind(']') + 1
+                        response_text = response_text[json_start:json_end]
+                    elif '```' in response_text:
+                        json_start = response_text.find('[')
+                        json_end = response_text.rfind(']') + 1
+                        response_text = response_text[json_start:json_end]
+
+                    translated_batch = json.loads(response_text)
+                    service_logger.info(f"Task {self.task_id}: Successfully parsed {len(translated_batch)} translations")
+                    return translated_batch
+
+                except json.JSONDecodeError as e:
+                    service_logger.error(f"Task {self.task_id}: Failed to parse JSON response: {e}")
+                    service_logger.error(f"Task {self.task_id}: Response text: {response_text}")
+                    # 返回原文
+                    return [{'id': item['id'], 'translated': item['text']} for item in batch]
+            else:
+                service_logger.error(f"Task {self.task_id}: ========== Translation API Error ==========")
+                service_logger.error(f"Task {self.task_id}: Status code: {response.status_code}")
+                service_logger.error(f"Task {self.task_id}: Response: {response.text}")
+                service_logger.error(f"Task {self.task_id}: =========================================")
+                # 返回原文
+                return [{'id': item['id'], 'translated': item['text']} for item in batch]
+
+        except Exception as e:
+            service_logger.error(f"Task {self.task_id}: ========== Batch Translation Exception ==========")
+            log_error(service_logger, e, f"Batch translation failed for task {self.task_id}")
+            service_logger.error(f"Task {self.task_id}: ================================================")
+            # 返回原文
+            return [{'id': item['id'], 'translated': item['text']} for item in batch]
 
     def render_subtitle_on_frame(
         self,
