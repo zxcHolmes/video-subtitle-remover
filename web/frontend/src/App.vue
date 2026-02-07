@@ -29,13 +29,26 @@
                 <!-- Config Component -->
                 <div v-show="currentStep >= 1">
                   <ConfigPanel
+                    ref="configPanelRef"
                     :task-id="taskId"
                     @process-started="handleProcessStarted"
+                    @detection-started="handleDetectionStarted"
+                    @translation-started="handleTranslationStarted"
+                  />
+                </div>
+
+                <!-- Subtitle Preview (for translation mode) -->
+                <div v-show="currentStep === 2 && showSubtitlePreview">
+                  <SubtitlePreview
+                    ref="subtitlePreviewRef"
+                    :task-id="taskId"
+                    :auto-load="true"
+                    @confirmed="handleSubtitlesConfirmed"
                   />
                 </div>
 
                 <!-- Progress Component -->
-                <div v-show="currentStep >= 2">
+                <div v-show="currentStep >= 3 || (currentStep === 2 && !showSubtitlePreview)">
                   <ProgressBar :task-id="taskId" />
                 </div>
               </div>
@@ -94,18 +107,47 @@
 import { ref } from 'vue'
 import FileUpload from './components/FileUpload.vue'
 import ConfigPanel from './components/ConfigPanel.vue'
+import SubtitlePreview from './components/SubtitlePreview.vue'
 import ProgressBar from './components/ProgressBar.vue'
 
 const currentStep = ref(0)
 const taskId = ref('')
+const showSubtitlePreview = ref(false)
+const configPanelRef = ref(null)
+const subtitlePreviewRef = ref(null)
 
 const handleUploadSuccess = (result) => {
   taskId.value = result.task_id
   currentStep.value = 1
+  showSubtitlePreview.value = false
 }
 
+// 去除字幕模式：直接进入进度显示
 const handleProcessStarted = () => {
   currentStep.value = 2
+  showSubtitlePreview.value = false
+}
+
+// 翻译模式 - 阶段1：字幕检测开始
+const handleDetectionStarted = () => {
+  currentStep.value = 2
+  showSubtitlePreview.value = true
+}
+
+// 翻译模式 - 阶段2：字幕确认后
+const handleSubtitlesConfirmed = () => {
+  currentStep.value = 3
+  showSubtitlePreview.value = false
+  // 通知配置面板字幕已确认
+  if (configPanelRef.value) {
+    configPanelRef.value.handleSubtitlesConfirmed()
+  }
+}
+
+// 翻译模式 - 阶段3：翻译开始
+const handleTranslationStarted = () => {
+  currentStep.value = 3
+  showSubtitlePreview.value = false
 }
 </script>
 

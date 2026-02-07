@@ -12,7 +12,8 @@ router = APIRouter()
 @router.post("/translate")
 async def start_translation(config: TranslationConfig):
     """
-    启动字幕翻译
+    启动字幕翻译（阶段2）
+    需要先完成字幕检测和用户确认
     """
     try:
         # 获取任务
@@ -22,6 +23,18 @@ async def start_translation(config: TranslationConfig):
             raise HTTPException(
                 status_code=400,
                 detail=f"任务状态不正确: {task.status}"
+            )
+
+        # 检查是否有确认的字幕数据
+        confirmed_path = os.path.join(
+            os.path.dirname(task.file_path),
+            f"{config.task_id}_confirmed.json"
+        )
+
+        if not os.path.exists(confirmed_path):
+            raise HTTPException(
+                status_code=400,
+                detail="请先完成字幕检测和确认"
             )
 
         # 创建翻译服务

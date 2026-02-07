@@ -94,13 +94,37 @@
         </el-form-item>
 
         <el-form-item>
+          <!-- 去除字幕：一步完成 -->
           <el-button
+            v-if="config.processType === 'remove'"
             type="success"
             @click="startProcess"
             :loading="processing"
-            :disabled="!taskId || (config.processType === 'translate' && !config.apiKey)"
+            :disabled="!taskId"
           >
-            {{ processing ? '处理中...' : (config.processType === 'remove' ? '开始去除' : '开始翻译') }}
+            {{ processing ? '处理中...' : '开始去除' }}
+          </el-button>
+
+          <!-- 翻译字幕：第一步-检测 -->
+          <el-button
+            v-if="config.processType === 'translate' && !detectionCompleted"
+            type="primary"
+            @click="startDetection"
+            :loading="detecting"
+            :disabled="!taskId"
+          >
+            {{ detecting ? '识别中...' : '开始识别字幕' }}
+          </el-button>
+
+          <!-- 翻译字幕：第二步-翻译（需要先确认字幕） -->
+          <el-button
+            v-if="config.processType === 'translate' && detectionCompleted && subtitlesConfirmed"
+            type="success"
+            @click="startTranslate"
+            :loading="processing"
+            :disabled="!config.apiKey"
+          >
+            {{ processing ? '翻译中...' : '开始翻译' }}
           </el-button>
         </el-form-item>
       </el-form>
@@ -150,13 +174,13 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { startProcessing, startTranslation } from '@/api/client'
+import { startProcessing, startTranslation, detectSubtitles } from '@/api/client'
 
 const props = defineProps({
   taskId: String
 })
 
-const emit = defineEmits(['process-started'])
+const emit = defineEmits(['process-started', 'detection-started', 'translation-started'])
 
 const config = reactive({
   processType: 'remove',  // 'remove' or 'translate'
@@ -174,6 +198,9 @@ const config = reactive({
 })
 
 const processing = ref(false)
+const detecting = ref(false)
+const detectionCompleted = ref(false)
+const subtitlesConfirmed = ref(false)
 const areaDialogVisible = ref(false)
 const areaInput = reactive({
   ymin: 0,
@@ -202,29 +229,17 @@ const formatArea = (area) => {
   return `[${area.join(', ')}]`
 }
 
+// 去除字幕（一步完成）
 const startProcess = async () => {
   if (!props.taskId) {
     ElMessage.warning('请先上传文件')
     return
   }
 
-  if (config.processType === 'translate' && !config.apiKey) {
-    ElMessage.warning('请输入 API Key')
-    return
-  }
-
   processing.value = true
   try {
-    let result
-    if (config.processType === 'remove') {
-      // 去除字幕
-      result = await startProcessing(props.taskId, config)
-      ElMessage.success('开始去除字幕')
-    } else {
-      // 翻译字幕
-      result = await startTranslation(props.taskId, config)
-      ElMessage.success('开始翻译字幕')
-    }
+    const result = await startProcessing(props.taskId, config)
+    ElMessage.success('开始去除字幕')
     emit('process-started', result)
   } catch (error) {
     ElMessage.error('启动失败: ' + (error.response?.data?.detail || error.message))
@@ -232,6 +247,65 @@ const startProcess = async () => {
     processing.value = false
   }
 }
+
+// 翻译字幕 - 阶段1：检测字幕
+const startDetection = async () => {
+  if (!props.taskId) {
+    ElMessage.warning('请先上传文件')
+    return
+  }
+
+  detecting.value = true
+  try {
+    const result = await detectSubtitles(props.taskId, config.sub_area)
+    ElMessage.success('开始识别字幕')
+    detectionCompleted.value = true
+    emit('detection-started', result)
+  } catch (error) {
+    ElMessage.error('识别失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    detecting.value = false
+  }
+}
+
+// 翻译字幕 - 阶段2：翻译已确认的字幕
+const startTranslate = async () => {
+  if (!props.taskId) {
+    ElMessage.warning('请先上传文件')
+    return
+  }
+
+  if (!config.apiKey) {
+    ElMessage.warning('请输入 API Key')
+    return
+  }
+
+  if (!subtitlesConfirmed.value) {
+    ElMessage.warning('请先确认字幕识别结果')
+    return
+  }
+
+  processing.value = true
+  try {
+    const result = await startTranslation(props.taskId, config)
+    ElMessage.success('开始翻译字幕')
+    emit('translation-started', result)
+  } catch (error) {
+    ElMessage.error('翻译失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    processing.value = false
+  }
+}
+
+// 处理字幕确认
+const handleSubtitlesConfirmed = () => {
+  subtitlesConfirmed.value = true
+}
+
+// 暴露方法供父组件使用
+defineExpose({
+  handleSubtitlesConfirmed
+})
 </script>
 
 <style scoped>

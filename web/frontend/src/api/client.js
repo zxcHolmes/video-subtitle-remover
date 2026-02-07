@@ -41,7 +41,37 @@ export const getStatus = async (taskId) => {
 }
 
 /**
- * Start translation
+ * Detect subtitles (Stage 1)
+ */
+export const detectSubtitles = async (taskId, subArea) => {
+  const response = await axios.post(`${API_BASE}/detect`, {
+    task_id: taskId,
+    sub_area: subArea
+  })
+  return response.data
+}
+
+/**
+ * Get detection result
+ */
+export const getDetectionResult = async (taskId) => {
+  const response = await axios.get(`${API_BASE}/detect/${taskId}`)
+  return response.data
+}
+
+/**
+ * Confirm detected subtitles
+ */
+export const confirmDetection = async (taskId, confirmedSubtitles) => {
+  const response = await axios.post(`${API_BASE}/detect/confirm`, {
+    task_id: taskId,
+    confirmed_subtitles: confirmedSubtitles
+  })
+  return response.data
+}
+
+/**
+ * Start translation (Stage 2)
  */
 export const startTranslation = async (taskId, config) => {
   const response = await axios.post(`${API_BASE}/translate`, {

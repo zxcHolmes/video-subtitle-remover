@@ -14,7 +14,7 @@ if current_dir not in sys.path:
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from api import upload, process, status, download, translate
+from api import upload, process, status, download, translate, detect
 from services.task_manager import task_manager
 
 app = FastAPI(
@@ -35,6 +35,7 @@ app.add_middleware(
 # Register API routes
 app.include_router(upload.router, prefix="/api", tags=["upload"])
 app.include_router(process.router, prefix="/api", tags=["process"])
+app.include_router(detect.router, prefix="/api", tags=["detect"])
 app.include_router(translate.router, prefix="/api", tags=["translate"])
 app.include_router(status.router, prefix="/api", tags=["status"])
 app.include_router(download.router, prefix="/api", tags=["download"])
