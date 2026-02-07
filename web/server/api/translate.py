@@ -8,7 +8,6 @@ from services.task_manager import task_manager
 from services.translation_service import SubtitleTranslationService
 from services.whisper_translation_service import WhisperTranslationService
 from utils.exceptions import TaskNotFoundException
-import logging
 
 router = APIRouter()
 
@@ -21,13 +20,13 @@ async def start_translation(config: TranslationConfig):
     """
     try:
         # 获取任务
-        logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Getting task info")
+        print(f"Task {config.task_id}: Getting task info", flush=True)
         task = task_manager.get_task(config.task_id)
-        logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Current status={task.status}")
+        print(f"Task {config.task_id}: Current status={task.status}", flush=True)
 
         # 允许在 UPLOADED（检测完成后）或 COMPLETED（重新翻译）状态下启动翻译
         if task.status not in [TaskStatus.UPLOADED, TaskStatus.COMPLETED]:
-            logging.getLogger("uvicorn.error").warning(f"Task {config.task_id}: Invalid status for translation - expected UPLOADED or COMPLETED, got {task.status}")
+            print(f"Task {config.task_id}: Invalid status for translation - expected UPLOADED or COMPLETED, got {task.status}", flush=True)
             raise HTTPException(
                 status_code=400,
                 detail=f"任务状态不正确: {task.status}，只能在检测完成或已完成状态下启动翻译"
@@ -44,9 +43,9 @@ async def start_translation(config: TranslationConfig):
             f"{config.task_id}_detected.json"
         )
 
-        logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Checking detection files")
-        logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: confirmed_path={confirmed_path}, exists={os.path.exists(confirmed_path)}")
-        logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: detected_path={detected_path}, exists={os.path.exists(detected_path)}")
+        print(f"Task {config.task_id}: Checking detection files", flush=True)
+        print(f"Task {config.task_id}: confirmed_path={confirmed_path}, exists={os.path.exists(confirmed_path, flush=True)}")
+        print(f"Task {config.task_id}: detected_path={detected_path}, exists={os.path.exists(detected_path, flush=True)}")
 
         # 判断使用哪种翻译方式
         use_whisper = False
@@ -55,10 +54,10 @@ async def start_translation(config: TranslationConfig):
                 detected_data = json.load(f)
                 if detected_data.get('method') == 'whisper':
                     use_whisper = True
-                    logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Detected Whisper method")
+                    print(f"Task {config.task_id}: Detected Whisper method", flush=True)
 
         if not os.path.exists(confirmed_path) and not (use_whisper and os.path.exists(detected_path)):
-            logging.getLogger("uvicorn.error").warning(f"Task {config.task_id}: Missing required detection/confirmation files")
+            print(f"Task {config.task_id}: Missing required detection/confirmation files", flush=True)
             raise HTTPException(
                 status_code=400,
                 detail="请先完成字幕检测和确认"
@@ -66,10 +65,10 @@ async def start_translation(config: TranslationConfig):
 
         # 根据检测方式创建对应的翻译服务
         if use_whisper:
-            logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Using Whisper translation service")
+            print(f"Task {config.task_id}: Using Whisper translation service", flush=True)
             service = WhisperTranslationService(task_id=config.task_id)
         else:
-            logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Using OCR translation service")
+            print(f"Task {config.task_id}: Using OCR translation service", flush=True)
             service = SubtitleTranslationService(
                 task_id=config.task_id,
                 api_key=config.api_key,
@@ -91,14 +90,14 @@ async def start_translation(config: TranslationConfig):
         # 在独立线程中处理
         def process_thread():
             try:
-                logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Translation thread started")
-                logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Method={'Whisper' if use_whisper else 'OCR'}")
-                logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Input={input_path}")
-                logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Output={output_path}")
+                print(f"Task {config.task_id}: Translation thread started", flush=True)
+                print(f"Task {config.task_id}: Method={'Whisper' if use_whisper else 'OCR'}", flush=True)
+                print(f"Task {config.task_id}: Input={input_path}", flush=True)
+                print(f"Task {config.task_id}: Output={output_path}", flush=True)
 
                 if use_whisper:
                     # Whisper 翻译流程
-                    logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Calling Whisper translate_and_render")
+                    print(f"Task {config.task_id}: Calling Whisper translate_and_render", flush=True)
 
                     service.translate_and_render(
                         video_path=input_path,
@@ -112,7 +111,7 @@ async def start_translation(config: TranslationConfig):
                     )
                 else:
                     # OCR 翻译流程
-                    logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Calling OCR process_video")
+                    print(f"Task {config.task_id}: Calling OCR process_video", flush=True)
                     service.process_video(
                         video_path=input_path,
                         output_path=output_path,
@@ -121,19 +120,19 @@ async def start_translation(config: TranslationConfig):
                     )
 
                 # 更新任务状态
-                logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: ========== Translation Completed Successfully ==========")
-                logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Method: {'Whisper' if use_whisper else 'OCR'}")
-                logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Input file: {input_path}")
-                logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Output file: {output_path}")
+                print(f"Task {config.task_id}: ========== Translation Completed Successfully ==========", flush=True)
+                print(f"Task {config.task_id}: Method: {'Whisper' if use_whisper else 'OCR'}", flush=True)
+                print(f"Task {config.task_id}: Input file: {input_path}", flush=True)
+                print(f"Task {config.task_id}: Output file: {output_path}", flush=True)
 
                 # 检查输出文件
                 if os.path.exists(output_path):
                     file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
-                    logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: Output file size: {file_size:.2f} MB")
+                    print(f"Task {config.task_id}: Output file size: {file_size:.2f} MB", flush=True)
                 else:
-                    logging.getLogger("uvicorn.error").warning(f"Task {config.task_id}: Output file does not exist!")
+                    print(f"Task {config.task_id}: Output file does not exist!", flush=True)
 
-                logging.getLogger("uvicorn.error").info(f"Task {config.task_id}: =======================================================")
+                print(f"Task {config.task_id}: =======================================================", flush=True)
 
                 task_manager.update_task(
                     config.task_id,
@@ -141,12 +140,12 @@ async def start_translation(config: TranslationConfig):
                     output_path=output_path
                 )
             except Exception as e:
-                logging.getLogger("uvicorn.error").error(f"Task {config.task_id}: ========== Translation Failed ==========")
-                logging.getLogger("uvicorn.error").error(f"Task {config.task_id}: Method: {'Whisper' if use_whisper else 'OCR'}")
-                logging.getLogger("uvicorn.error").error(f"Task {config.task_id}: Input file: {input_path}")
-                logging.getLogger("uvicorn.error").error(f"Task {config.task_id}: Expected output: {output_path}")
-                logging.getLogger("uvicorn.error").exception(f"Translation thread failed for task {config.task_id}")
-                logging.getLogger("uvicorn.error").error(f"Task {config.task_id}: =========================================")
+                print(f"Task {config.task_id}: ========== Translation Failed ==========", flush=True)
+                print(f"Task {config.task_id}: Method: {'Whisper' if use_whisper else 'OCR'}", flush=True)
+                print(f"Task {config.task_id}: Input file: {input_path}", flush=True)
+                print(f"Task {config.task_id}: Expected output: {output_path}", flush=True)
+                print(f"Translation thread failed for task {config.task_id}", flush=True); import traceback; traceback.print_exc()
+                print(f"Task {config.task_id}: =========================================", flush=True)
 
                 task_manager.update_task(
                     config.task_id,
@@ -173,9 +172,9 @@ async def start_translation(config: TranslationConfig):
         }
 
     except TaskNotFoundException as e:
-        logging.getLogger("uvicorn.error").error(f"Task {config.task_id}: Task not found")
+        print(f"Task {config.task_id}: Task not found", flush=True)
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logging.getLogger("uvicorn.error").exception(f"Failed to start translation for task {config.task_id}")
+        print(f"Failed to start translation for task {config.task_id}", flush=True); import traceback; traceback.print_exc()
         error_detail = str(e) if str(e) else f"{type(e).__name__}: {repr(e)}"
         raise HTTPException(status_code=500, detail=f"启动翻译失败: {error_detail}")

@@ -2,7 +2,7 @@ import os
 import sys
 import threading
 import json
-import logging
+
 from fastapi import APIRouter, HTTPException
 from models.task import TaskStatus
 from services.task_manager import task_manager
