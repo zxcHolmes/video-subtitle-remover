@@ -82,14 +82,23 @@ class SubtitleDetectService:
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+            print(f"Video info: {width}x{height}, {frame_count} frames")
+
             # 初始化检测器
             detector = SubtitleDetect(video_path, sub_area)
+
+            # 初始化 PaddleOCR（只初始化一次）
+            from paddleocr import PaddleOCR
+            print("Initializing PaddleOCR...")
+            self.ocr = PaddleOCR(use_angle_cls=True, lang='ch', show_log=False)
+            print("PaddleOCR initialized.")
 
             # 存储每帧的字幕
             frame_subtitles = {}  # {frame_no: [{'text': '', 'box': ()}, ...]}
 
             print("Detecting and recognizing subtitles...")
             frame_no = 0
+            last_print_progress = 0
 
             while cap.isOpened():
                 ret, frame = cap.read()
@@ -102,6 +111,10 @@ class SubtitleDetectService:
                 dt_boxes, _ = detector.detect_subtitle(frame)
                 if dt_boxes is None or len(dt_boxes) == 0:
                     self.progress = 100 * frame_no / frame_count
+                    # 每处理10%打印一次进度
+                    if self.progress - last_print_progress >= 10:
+                        print(f"Progress: {self.progress:.1f}% ({frame_no}/{frame_count} frames)")
+                        last_print_progress = self.progress
                     continue
 
                 # 转换坐标
@@ -127,11 +140,6 @@ class SubtitleDetectService:
                         xmin, xmax, ymin, ymax = box
                         roi = frame[ymin:ymax, xmin:xmax]
 
-                        # 使用PaddleOCR识别
-                        from paddleocr import PaddleOCR
-                        if not hasattr(self, 'ocr'):
-                            self.ocr = PaddleOCR(use_angle_cls=True, lang='ch')
-
                         result = self.ocr.ocr(roi, cls=True)
                         if result and result[0]:
                             texts = [line[1][0] for line in result[0]]
@@ -142,6 +150,7 @@ class SubtitleDetectService:
                                     'text': text,
                                     'box': box
                                 })
+                                print(f"Frame {frame_no}: Found subtitle '{text}' at {box}")
                     except Exception as e:
                         print(f"OCR error at frame {frame_no}: {e}")
                         continue
@@ -152,7 +161,13 @@ class SubtitleDetectService:
                 # 更新进度
                 self.progress = 100 * frame_no / frame_count
 
+                # 每处理10%打印一次进度
+                if self.progress - last_print_progress >= 10:
+                    print(f"Progress: {self.progress:.1f}% ({frame_no}/{frame_count} frames)")
+                    last_print_progress = self.progress
+
             cap.release()
+            print(f"Detection completed: {len(frame_subtitles)} frames with subtitles found")
 
             # 合并相同字幕
             unique_subtitles = self._merge_duplicates(frame_subtitles)
