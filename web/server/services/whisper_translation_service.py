@@ -101,7 +101,7 @@ class WhisperTranslationService:
         for i, segment in enumerate(segments):
             original_text = segment['text']
 
-            service_logger.debug(f"Task {self.task_id}: [{i+1}/{total}] Translating: {original_text[:30]}...")
+            service_logger.info(f"Task {self.task_id}: [{i+1}/{total}] Translating: {original_text}")
 
             translated_text = self.translate_text(
                 original_text,
@@ -118,7 +118,7 @@ class WhisperTranslationService:
                 'translated': translated_text
             })
 
-            service_logger.debug(f"Task {self.task_id}: Translated: {translated_text[:30]}...")
+            service_logger.info(f"Task {self.task_id}: [{i+1}/{total}] Translated: {translated_text}")
 
             # 更新进度 (0-50%)
             self.progress = 50 * (i + 1) / total
@@ -357,14 +357,29 @@ class WhisperTranslationService:
             self.status = "completed"
             self.progress = 100
 
-            service_logger.info(f"Task {self.task_id}: Translation and rendering completed - {output_file}")
+            service_logger.info(f"Task {self.task_id}: ========== Translation & Rendering Summary ==========")
+            service_logger.info(f"Task {self.task_id}: Input video: {video_path}")
+            service_logger.info(f"Task {self.task_id}: Output video: {output_file}")
+            service_logger.info(f"Task {self.task_id}: Segments translated: {len(translated_segments)}")
+            service_logger.info(f"Task {self.task_id}: Target language: {target_lang}")
+            service_logger.info(f"Task {self.task_id}: Subtitle region: {subtitle_region}")
+
+            if os.path.exists(output_file):
+                file_size = os.path.getsize(output_file) / (1024 * 1024)  # MB
+                service_logger.info(f"Task {self.task_id}: Output file size: {file_size:.2f} MB")
+            else:
+                service_logger.error(f"Task {self.task_id}: Output file does not exist!")
+
+            service_logger.info(f"Task {self.task_id}: =====================================================")
 
             return output_file
 
         except Exception as e:
             self.status = "error"
             self.error = str(e)
+            service_logger.error(f"Task {self.task_id}: ========== Translation & Rendering Failed ==========")
             log_error(service_logger, e, f"Translation and rendering failed for task {self.task_id}")
+            service_logger.error(f"Task {self.task_id}: ====================================================")
             raise e
 
     def get_progress(self) -> dict:

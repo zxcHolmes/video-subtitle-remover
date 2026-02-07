@@ -121,8 +121,19 @@ async def start_translation(config: TranslationConfig):
                     )
 
                 # 更新任务状态
-                api_logger.info(f"Task {config.task_id}: Translation completed successfully")
-                api_logger.info(f"Task {config.task_id}: Output saved to {output_path}")
+                api_logger.info(f"Task {config.task_id}: ========== Translation Completed Successfully ==========")
+                api_logger.info(f"Task {config.task_id}: Method: {'Whisper' if use_whisper else 'OCR'}")
+                api_logger.info(f"Task {config.task_id}: Input file: {input_path}")
+                api_logger.info(f"Task {config.task_id}: Output file: {output_path}")
+
+                # 检查输出文件
+                if os.path.exists(output_path):
+                    file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
+                    api_logger.info(f"Task {config.task_id}: Output file size: {file_size:.2f} MB")
+                else:
+                    api_logger.warning(f"Task {config.task_id}: Output file does not exist!")
+
+                api_logger.info(f"Task {config.task_id}: =======================================================")
 
                 task_manager.update_task(
                     config.task_id,
@@ -130,7 +141,13 @@ async def start_translation(config: TranslationConfig):
                     output_path=output_path
                 )
             except Exception as e:
+                api_logger.error(f"Task {config.task_id}: ========== Translation Failed ==========")
+                api_logger.error(f"Task {config.task_id}: Method: {'Whisper' if use_whisper else 'OCR'}")
+                api_logger.error(f"Task {config.task_id}: Input file: {input_path}")
+                api_logger.error(f"Task {config.task_id}: Expected output: {output_path}")
                 log_error(api_logger, e, f"Translation thread failed for task {config.task_id}")
+                api_logger.error(f"Task {config.task_id}: =========================================")
+
                 task_manager.update_task(
                     config.task_id,
                     status=TaskStatus.ERROR,

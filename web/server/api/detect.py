@@ -85,6 +85,26 @@ async def detect_subtitles(request: dict):
 
                 api_logger.info(f"Task {task_id}: Detection result saved successfully")
 
+                # 打印检测结果摘要
+                if detection_method == 'whisper':
+                    segments = result.get('segments', [])
+                    api_logger.info(f"Task {task_id}: ========== Whisper Detection Completed ==========")
+                    api_logger.info(f"Task {task_id}: Total segments: {len(segments)}")
+                    api_logger.info(f"Task {task_id}: Subtitle region: {result.get('subtitle_region')}")
+                    api_logger.info(f"Task {task_id}: All segments:")
+
+                    # 打印所有segment，不截断
+                    for i, seg in enumerate(segments):
+                        api_logger.info(f"Task {task_id}:   [{i}] {seg.get('start'):.1f}s - {seg.get('end'):.1f}s | {seg.get('text', '')}")
+
+                    api_logger.info(f"Task {task_id}: ================================================")
+                else:
+                    api_logger.info(f"Task {task_id}: ========== OCR Detection Completed ==========")
+                    api_logger.info(f"Task {task_id}: Total frames: {result.get('total_frames')}")
+                    api_logger.info(f"Task {task_id}: Subtitle count: {result.get('subtitle_count')}")
+                    api_logger.info(f"Task {task_id}: Unique count: {result.get('unique_count')}")
+                    api_logger.info(f"Task {task_id}: ==============================================")
+
                 # 如果是 Whisper 方式，自动确认（不需要用户手动确认）
                 if detection_method == 'whisper':
                     confirmed_path = os.path.join(
