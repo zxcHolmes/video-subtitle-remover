@@ -149,27 +149,20 @@ class WhisperTranslationService:
 要求：
 1. 保持原有的id
 2. 只翻译text字段的内容
-3. 返回JSON数组格式：[{{"id": 0, "translated": "翻译结果"}}, {{"id": 1, "translated": "翻译结果"}}, ...]"""
+3. 返回JSON对象格式：{{"translations": [{{"id": 0, "translated": "翻译结果"}}, {{"id": 1, "translated": "翻译结果"}}, ...]}}"""
 
             data = {
                 'model': model,
                 'messages': [
                     {'role': 'user', 'content': prompt}
                 ],
-                'temperature': 0.3
+                'temperature': 0.3,
+                'response_format': {'type': 'json_object'}  # OpenAI standard
             }
 
-            # 尝试添加 response_format（某些API可能不支持）
-            try:
-                data['response_format'] = {'type': 'json_object'}
-                service_logger.info(f"Task {self.task_id}: Using response_format=json_object")
-            except:
-                pass
-
-            service_logger.info(f"Task {self.task_id}: Sending batch translation request")
+            service_logger.info(f"Task {self.task_id}: Sending batch translation request with response_format=json_object")
             service_logger.info(f"Task {self.task_id}: API: {api_base}/v1/chat/completions")
             service_logger.info(f"Task {self.task_id}: Model: {model}")
-            service_logger.info(f"Task {self.task_id}: Request data: {json.dumps(data, ensure_ascii=False)}")
 
             response = requests.post(
                 f"{api_base}/v1/chat/completions",
@@ -186,37 +179,23 @@ class WhisperTranslationService:
 
                 service_logger.info(f"Task {self.task_id}: API response: {response_text}")
 
-                # 解析JSON响应
+                # 解析JSON响应 - OpenAI response_format 保证返回 JSON object
                 try:
                     response_data = json.loads(response_text)
 
-                    # response_format json_object 返回的可能是对象包裹数组
-                    # 例如: {"translations": [...]} 或直接是 [...]
-                    if isinstance(response_data, list):
-                        translated_batch = response_data
-                    elif isinstance(response_data, dict):
-                        # 尝试找到数组字段
-                        if 'translations' in response_data:
-                            translated_batch = response_data['translations']
-                        elif 'results' in response_data:
-                            translated_batch = response_data['results']
-                        elif 'data' in response_data:
-                            translated_batch = response_data['data']
-                        else:
-                            # 找第一个数组类型的值
-                            for value in response_data.values():
-                                if isinstance(value, list):
-                                    translated_batch = value
-                                    break
-                            else:
-                                raise ValueError("No array found in response JSON object")
+                    # 期望格式: {"translations": [...]}
+                    if 'translations' in response_data:
+                        translated_batch = response_data['translations']
                     else:
-                        raise ValueError(f"Unexpected response type: {type(response_data)}")
+                        service_logger.error(f"Task {self.task_id}: Missing 'translations' key in response")
+                        service_logger.error(f"Task {self.task_id}: Response keys: {list(response_data.keys())}")
+                        # 返回原文
+                        return [{'id': item['id'], 'translated': item['text']} for item in batch]
 
                     service_logger.info(f"Task {self.task_id}: Successfully parsed {len(translated_batch)} translations")
                     return translated_batch
 
-                except (json.JSONDecodeError, ValueError) as e:
+                except json.JSONDecodeError as e:
                     service_logger.error(f"Task {self.task_id}: Failed to parse JSON response: {e}")
                     service_logger.error(f"Task {self.task_id}: Response text: {response_text}")
                     # 返回原文
