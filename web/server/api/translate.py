@@ -155,4 +155,14 @@ async def start_translation(config: TranslationConfig):
     except TaskNotFoundException as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"启动翻译失败: {str(e)}")
+        # 打印完整错误堆栈
+        import traceback
+        print(f"\n{'='*60}")
+        print(f"ERROR starting translation for task {config.task_id}:")
+        print(f"{'='*60}")
+        traceback.print_exc()
+        print(f"{'='*60}\n")
+        sys.stdout.flush()
+
+        error_detail = str(e) if str(e) else f"{type(e).__name__}: {repr(e)}"
+        raise HTTPException(status_code=500, detail=f"启动翻译失败: {error_detail}")
