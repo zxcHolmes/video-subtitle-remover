@@ -1,3 +1,4 @@
+from utils.simple_logger import service_logger as logger
 import cv2
 import sys
 import os
@@ -42,7 +43,7 @@ class WhisperTranslationService:
         segments: [{'id': 0, 'start': 0.0, 'end': 2.5, 'text': '原文'}, ...]
         返回: [{'start': 0.0, 'end': 2.5, 'text': '原文', 'translated': '译文'}, ...]
         """
-        print(f"Task {self.task_id}: Starting batch translation for {len(segments, flush=True)} segments to {target_lang}")
+        logger.info(f"Task {self.task_id}: Starting batch translation for {len(segments)} segments to {target_lang}")
 
         # 按字符数分批
         batches = []
@@ -67,13 +68,13 @@ class WhisperTranslationService:
         if current_batch:
             batches.append(current_batch)
 
-        print(f"Task {self.task_id}: Split into {len(batches, flush=True)} batches")
+        logger.info(f"Task {self.task_id}: Split into {len(batches)} batches")
 
         # 翻译每一批
         all_translated = []
         for batch_idx, batch in enumerate(batches):
-            print(f"Task {self.task_id}: ========== Batch {batch_idx + 1}/{len(batches, flush=True)} ==========")
-            print(f"Task {self.task_id}: Segments in this batch: {len(batch, flush=True)}")
+            logger.info(f"Task {self.task_id}: ========== Batch {batch_idx + 1}/{len(batches)} ==========")
+            logger.info(f"Task {self.task_id}: Segments in this batch: {len(batch)}")
 
             # 构造JSON输入
             batch_input = []
@@ -83,7 +84,7 @@ class WhisperTranslationService:
                     'text': seg['text']
                 })
 
-            print(f"Task {self.task_id}: Batch input JSON: {json.dumps(batch_input, ensure_ascii=False, flush=True)}")
+            logger.info(f"Task {self.task_id}: Batch input JSON: {json.dumps(batch_input, ensure_ascii=False)}")
 
             # 调用翻译API
             translated_batch = self.translate_batch(
@@ -111,12 +112,12 @@ class WhisperTranslationService:
                     'translated': translated_text
                 })
 
-                print(f"Task {self.task_id}: [{seg_id}] {seg['text']} -> {translated_text}", flush=True)
+                logger.info(f"Task {self.task_id}: [{seg_id}] {seg['text']} -> {translated_text}")
 
             # 更新进度 (0-50%)
             self.progress = 50 * (batch_idx + 1) / len(batches)
 
-        print(f"Task {self.task_id}: All batches translated - {len(all_translated, flush=True)} segments total")
+        logger.info(f"Task {self.task_id}: All batches translated - {len(all_translated)} segments total")
         return all_translated
 
     def translate_batch(
@@ -158,9 +159,9 @@ class WhisperTranslationService:
                 'response_format': {'type': 'json_object'}  # OpenAI standard
             }
 
-            print(f"Task {self.task_id}: Sending batch translation request with response_format=json_object", flush=True)
-            print(f"Task {self.task_id}: API: {api_base}/v1/chat/completions", flush=True)
-            print(f"Task {self.task_id}: Model: {model}", flush=True)
+            logger.info(f"Task {self.task_id}: Sending batch translation request with response_format=json_object")
+            logger.info(f"Task {self.task_id}: API: {api_base}/v1/chat/completions")
+            logger.info(f"Task {self.task_id}: Model: {model}")
 
             response = requests.post(
                 f"{api_base}/v1/chat/completions",
@@ -169,13 +170,13 @@ class WhisperTranslationService:
                 timeout=60  # 批量翻译可能需要更长时间
             )
 
-            print(f"Task {self.task_id}: API response status: {response.status_code}", flush=True)
+            logger.info(f"Task {self.task_id}: API response status: {response.status_code}")
 
             if response.status_code == 200:
                 result = response.json()
                 response_text = result['choices'][0]['message']['content'].strip()
 
-                print(f"Task {self.task_id}: API response: {response_text}", flush=True)
+                logger.info(f"Task {self.task_id}: API response: {response_text}")
 
                 # 解析JSON响应 - OpenAI response_format 保证返回 JSON object
                 try:
@@ -185,31 +186,31 @@ class WhisperTranslationService:
                     if 'translations' in response_data:
                         translated_batch = response_data['translations']
                     else:
-                        print(f"Task {self.task_id}: Missing 'translations' key in response", flush=True)
-                        print(f"Task {self.task_id}: Response keys: {list(response_data.keys(, flush=True))}")
+                        logger.info(f"Task {self.task_id}: Missing 'translations' key in response")
+                        logger.info(f"Task {self.task_id}: Response keys: {list(response_data.keys())}")
                         # 返回原文
                         return [{'id': item['id'], 'translated': item['text']} for item in batch]
 
-                    print(f"Task {self.task_id}: Successfully parsed {len(translated_batch, flush=True)} translations")
+                    logger.info(f"Task {self.task_id}: Successfully parsed {len(translated_batch)} translations")
                     return translated_batch
 
                 except json.JSONDecodeError as e:
-                    print(f"Task {self.task_id}: Failed to parse JSON response: {e}", flush=True)
-                    print(f"Task {self.task_id}: Response text: {response_text}", flush=True)
+                    logger.info(f"Task {self.task_id}: Failed to parse JSON response: {e}")
+                    logger.info(f"Task {self.task_id}: Response text: {response_text}")
                     # 返回原文
                     return [{'id': item['id'], 'translated': item['text']} for item in batch]
             else:
-                print(f"Task {self.task_id}: ========== Translation API Error ==========", flush=True)
-                print(f"Task {self.task_id}: Status code: {response.status_code}", flush=True)
-                print(f"Task {self.task_id}: Response: {response.text}", flush=True)
-                print(f"Task {self.task_id}: =========================================", flush=True)
+                logger.info(f"Task {self.task_id}: ========== Translation API Error ==========")
+                logger.info(f"Task {self.task_id}: Status code: {response.status_code}")
+                logger.info(f"Task {self.task_id}: Response: {response.text}")
+                logger.info(f"Task {self.task_id}: =========================================")
                 # 返回原文
                 return [{'id': item['id'], 'translated': item['text']} for item in batch]
 
         except Exception as e:
-            print(f"Task {self.task_id}: ========== Batch Translation Exception ==========", flush=True)
-            print(f"Batch translation failed for task {self.task_id}", flush=True); import traceback; traceback.print_exc()
-            print(f"Task {self.task_id}: ================================================", flush=True)
+            logger.info(f"Task {self.task_id}: ========== Batch Translation Exception ==========")
+            logger.info(f"Batch translation failed for task {self.task_id}"); import traceback; traceback.print_exc()
+            logger.info(f"Task {self.task_id}: ================================================")
             # 返回原文
             return [{'id': item['id'], 'translated': item['text']} for item in batch]
 
@@ -285,13 +286,13 @@ class WhisperTranslationService:
         """
         处理视频，在指定时间段渲染翻译字幕
         """
-        print(f"Task {self.task_id}: ========== Starting Video Rendering ==========", flush=True)
-        print(f"Task {self.task_id}: Input video: {video_path}", flush=True)
+        logger.info(f"Task {self.task_id}: ========== Starting Video Rendering ==========")
+        logger.info(f"Task {self.task_id}: Input video: {video_path}")
 
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             error_msg = f"Failed to open video file: {video_path}"
-            print(f"Task {self.task_id}: {error_msg}", flush=True)
+            logger.info(f"Task {self.task_id}: {error_msg}")
             raise RuntimeError(error_msg)
 
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -299,13 +300,13 @@ class WhisperTranslationService:
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        print(f"Task {self.task_id}: Video info - FPS: {fps}, Resolution: {width}x{height}, Total frames: {total_frames}", flush=True)
-        print(f"Task {self.task_id}: Subtitle region: {subtitle_region}", flush=True)
-        print(f"Task {self.task_id}: Segments to render: {len(translated_segments, flush=True)}")
+        logger.info(f"Task {self.task_id}: Video info - FPS: {fps}, Resolution: {width}x{height}, Total frames: {total_frames}")
+        logger.info(f"Task {self.task_id}: Subtitle region: {subtitle_region}")
+        logger.info(f"Task {self.task_id}: Segments to render: {len(translated_segments)}")
 
         # 创建临时输出文件
         temp_output = output_path.replace('.mp4', '_temp.mp4')
-        print(f"Task {self.task_id}: Temp output: {temp_output}", flush=True)
+        logger.info(f"Task {self.task_id}: Temp output: {temp_output}")
 
         # 使用 mp4v 编码器（跨平台兼容）
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -313,13 +314,13 @@ class WhisperTranslationService:
 
         if not out.isOpened():
             error_msg = f"Failed to create VideoWriter for: {temp_output}"
-            print(f"Task {self.task_id}: {error_msg}", flush=True)
+            logger.info(f"Task {self.task_id}: {error_msg}")
             raise RuntimeError(error_msg)
 
-        print(f"Task {self.task_id}: VideoWriter created successfully", flush=True)
+        logger.info(f"Task {self.task_id}: VideoWriter created successfully")
 
         # 创建时间段到字幕的映射
-        print(f"Task {self.task_id}: Creating frame-to-subtitle mapping", flush=True)
+        logger.info(f"Task {self.task_id}: Creating frame-to-subtitle mapping")
 
         time_to_subtitle = {}
         for i, segment in enumerate(translated_segments):
@@ -327,15 +328,15 @@ class WhisperTranslationService:
             end_frame = int(segment['end'] * fps)
             frame_count = end_frame - start_frame + 1
 
-            print(f"Task {self.task_id}: Segment {i}: frames {start_frame}-{end_frame} ({frame_count} frames, flush=True) -> '{segment['translated']}'")
+            logger.info(f"Task {self.task_id}: Segment {i}: frames {start_frame}-{end_frame} ({frame_count} frames) -> '{segment['translated']}'")
 
             for frame_no in range(start_frame, end_frame + 1):
                 time_to_subtitle[frame_no] = segment['translated']
 
-        print(f"Task {self.task_id}: Mapped {len(time_to_subtitle, flush=True)} frames with subtitles")
+        logger.info(f"Task {self.task_id}: Mapped {len(time_to_subtitle)} frames with subtitles")
 
         # 处理每一帧
-        print(f"Task {self.task_id}: Starting frame-by-frame rendering", flush=True)
+        logger.info(f"Task {self.task_id}: Starting frame-by-frame rendering")
 
         frame_no = 0
         subtitle_frame_count = 0
@@ -366,16 +367,16 @@ class WhisperTranslationService:
             # 每10%打印一次进度
             current_percent = int(self.progress - 50)  # 0-50范围
             if current_percent >= last_log_percent + 10:
-                print(f"Task {self.task_id}: Rendering progress {frame_no}/{total_frames} frames ({self.progress:.1f}%, flush=True), subtitles rendered: {subtitle_frame_count}")
+                logger.info(f"Task {self.task_id}: Rendering progress {frame_no}/{total_frames} frames ({self.progress:.1f}%), subtitles rendered: {subtitle_frame_count}")
                 last_log_percent = current_percent
 
         cap.release()
         out.release()
 
-        print(f"Task {self.task_id}: Frame rendering completed", flush=True)
-        print(f"Task {self.task_id}: Total frames processed: {frame_no}", flush=True)
-        print(f"Task {self.task_id}: Frames with subtitles: {subtitle_frame_count}", flush=True)
-        print(f"Task {self.task_id}: Starting FFmpeg re-encoding", flush=True)
+        logger.info(f"Task {self.task_id}: Frame rendering completed")
+        logger.info(f"Task {self.task_id}: Total frames processed: {frame_no}")
+        logger.info(f"Task {self.task_id}: Frames with subtitles: {subtitle_frame_count}")
+        logger.info(f"Task {self.task_id}: Starting FFmpeg re-encoding")
 
         # 使用 FFmpeg 重新编码（高质量 + 音频）
         import subprocess
@@ -395,40 +396,40 @@ class WhisperTranslationService:
             output_path
         ]
 
-        print(f"Task {self.task_id}: FFmpeg command: {' '.join(ffmpeg_cmd, flush=True)}")
+        logger.info(f"Task {self.task_id}: FFmpeg command: {' '.join(ffmpeg_cmd)}")
 
         try:
             result = subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
-            print(f"Task {self.task_id}: FFmpeg encoding completed successfully", flush=True)
+            logger.info(f"Task {self.task_id}: FFmpeg encoding completed successfully")
 
             if result.stdout:
-                print(f"Task {self.task_id}: FFmpeg stdout: {result.stdout.decode(, flush=True)}")
+                logger.info(f"Task {self.task_id}: FFmpeg stdout: {result.stdout.decode()}")
 
             # 检查输出文件
             if os.path.exists(output_path):
                 output_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
-                print(f"Task {self.task_id}: Final output file: {output_path} ({output_size:.2f} MB, flush=True)")
+                logger.info(f"Task {self.task_id}: Final output file: {output_path} ({output_size:.2f} MB)")
             else:
-                print(f"Task {self.task_id}: FFmpeg succeeded but output file does not exist!", flush=True)
+                logger.info(f"Task {self.task_id}: FFmpeg succeeded but output file does not exist!")
 
         except subprocess.CalledProcessError as e:
-            print(f"Task {self.task_id}: ========== FFmpeg Failed ==========", flush=True)
-            print(f"Task {self.task_id}: Return code: {e.returncode}", flush=True)
-            print(f"Task {self.task_id}: stderr: {e.stderr.decode(, flush=True)}")
+            logger.info(f"Task {self.task_id}: ========== FFmpeg Failed ==========")
+            logger.info(f"Task {self.task_id}: Return code: {e.returncode}")
+            logger.info(f"Task {self.task_id}: stderr: {e.stderr.decode()}")
             if e.stdout:
-                print(f"Task {self.task_id}: stdout: {e.stdout.decode(, flush=True)}")
-            print(f"Task {self.task_id}: ===================================", flush=True)
+                logger.info(f"Task {self.task_id}: stdout: {e.stdout.decode()}")
+            logger.info(f"Task {self.task_id}: ===================================")
 
             # 如果 FFmpeg 失败，使用临时文件作为输出
-            print(f"Task {self.task_id}: Falling back to temp file", flush=True)
+            logger.info(f"Task {self.task_id}: Falling back to temp file")
             import shutil
             shutil.move(temp_output, output_path)
-            print(f"Task {self.task_id}: Moved {temp_output} -> {output_path}", flush=True)
+            logger.info(f"Task {self.task_id}: Moved {temp_output} -> {output_path}")
         else:
             # 删除临时文件
             if os.path.exists(temp_output):
                 os.remove(temp_output)
-                print(f"Task {self.task_id}: Removed temp file: {temp_output}", flush=True)
+                logger.info(f"Task {self.task_id}: Removed temp file: {temp_output}")
 
         return output_path
 
@@ -450,10 +451,10 @@ class WhisperTranslationService:
             self.status = "processing"
             self.progress = 0
 
-            print(f"Task {self.task_id}: Starting translation and rendering", flush=True)
+            logger.info(f"Task {self.task_id}: Starting translation and rendering")
 
             # 读取 Whisper 识别结果
-            print(f"Task {self.task_id}: Loading Whisper result from {whisper_result_path}", flush=True)
+            logger.info(f"Task {self.task_id}: Loading Whisper result from {whisper_result_path}")
 
             with open(whisper_result_path, 'r', encoding='utf-8') as f:
                 whisper_result = json.load(f)
@@ -461,20 +462,20 @@ class WhisperTranslationService:
             subtitle_region = whisper_result.get('subtitle_region')
             segments = whisper_result.get('segments', [])
 
-            print(f"Task {self.task_id}: Loaded {len(segments, flush=True)} segments, region={subtitle_region}")
+            logger.info(f"Task {self.task_id}: Loaded {len(segments)} segments, region={subtitle_region}")
 
             if not subtitle_region:
                 error_msg = "No subtitle region found in Whisper result"
-                print(f"Task {self.task_id}: {error_msg}", flush=True)
+                logger.info(f"Task {self.task_id}: {error_msg}")
                 raise ValueError(error_msg)
 
             if not segments:
                 error_msg = "No subtitle segments found in Whisper result"
-                print(f"Task {self.task_id}: {error_msg}", flush=True)
+                logger.info(f"Task {self.task_id}: {error_msg}")
                 raise ValueError(error_msg)
 
             # 步骤1: 翻译所有片段
-            print(f"Task {self.task_id}: Step 1 - Translating {len(segments, flush=True)} segments")
+            logger.info(f"Task {self.task_id}: Step 1 - Translating {len(segments)} segments")
 
             translated_segments = self.batch_translate_segments(
                 segments,
@@ -484,10 +485,10 @@ class WhisperTranslationService:
                 model
             )
 
-            print(f"Task {self.task_id}: Step 1 completed - {len(translated_segments, flush=True)} segments translated")
+            logger.info(f"Task {self.task_id}: Step 1 completed - {len(translated_segments)} segments translated")
 
             # 步骤2: 渲染到视频
-            print(f"Task {self.task_id}: Step 2 - Rendering to video", flush=True)
+            logger.info(f"Task {self.task_id}: Step 2 - Rendering to video")
 
             output_file = self.process_video_with_translations(
                 video_path,
@@ -500,29 +501,29 @@ class WhisperTranslationService:
             self.status = "completed"
             self.progress = 100
 
-            print(f"Task {self.task_id}: ========== Translation & Rendering Summary ==========", flush=True)
-            print(f"Task {self.task_id}: Input video: {video_path}", flush=True)
-            print(f"Task {self.task_id}: Output video: {output_file}", flush=True)
-            print(f"Task {self.task_id}: Segments translated: {len(translated_segments, flush=True)}")
-            print(f"Task {self.task_id}: Target language: {target_lang}", flush=True)
-            print(f"Task {self.task_id}: Subtitle region: {subtitle_region}", flush=True)
+            logger.info(f"Task {self.task_id}: ========== Translation & Rendering Summary ==========")
+            logger.info(f"Task {self.task_id}: Input video: {video_path}")
+            logger.info(f"Task {self.task_id}: Output video: {output_file}")
+            logger.info(f"Task {self.task_id}: Segments translated: {len(translated_segments)}")
+            logger.info(f"Task {self.task_id}: Target language: {target_lang}")
+            logger.info(f"Task {self.task_id}: Subtitle region: {subtitle_region}")
 
             if os.path.exists(output_file):
                 file_size = os.path.getsize(output_file) / (1024 * 1024)  # MB
-                print(f"Task {self.task_id}: Output file size: {file_size:.2f} MB", flush=True)
+                logger.info(f"Task {self.task_id}: Output file size: {file_size:.2f} MB")
             else:
-                print(f"Task {self.task_id}: Output file does not exist!", flush=True)
+                logger.info(f"Task {self.task_id}: Output file does not exist!")
 
-            print(f"Task {self.task_id}: =====================================================", flush=True)
+            logger.info(f"Task {self.task_id}: =====================================================")
 
             return output_file
 
         except Exception as e:
             self.status = "error"
             self.error = str(e)
-            print(f"Task {self.task_id}: ========== Translation & Rendering Failed ==========", flush=True)
-            print(f"Translation and rendering failed for task {self.task_id}", flush=True); import traceback; traceback.print_exc()
-            print(f"Task {self.task_id}: ====================================================", flush=True)
+            logger.info(f"Task {self.task_id}: ========== Translation & Rendering Failed ==========")
+            logger.info(f"Translation and rendering failed for task {self.task_id}"); import traceback; traceback.print_exc()
+            logger.info(f"Task {self.task_id}: ====================================================")
             raise e
 
     def get_progress(self) -> dict:

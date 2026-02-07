@@ -1,3 +1,4 @@
+from utils.simple_logger import api_logger as logger
 import os
 import sys
 import threading

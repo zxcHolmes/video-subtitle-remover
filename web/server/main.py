@@ -1,3 +1,4 @@
+from utils.simple_logger import main_logger as logger
 import sys
 import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
