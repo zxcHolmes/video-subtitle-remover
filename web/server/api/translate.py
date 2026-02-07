@@ -8,6 +8,7 @@ from services.task_manager import task_manager
 from services.translation_service import SubtitleTranslationService
 from services.whisper_translation_service import WhisperTranslationService
 from utils.exceptions import TaskNotFoundException
+from utils.logger import api_logger, log_error
 
 router = APIRouter()
 
@@ -55,10 +56,10 @@ async def start_translation(config: TranslationConfig):
 
         # 根据检测方式创建对应的翻译服务
         if use_whisper:
-            print(f"[API] Using Whisper translation service")
+            api_logger.info(f"Task {config.task_id}: Using Whisper translation service")
             service = WhisperTranslationService(task_id=config.task_id)
         else:
-            print(f"[API] Using OCR translation service")
+            api_logger.info(f"Task {config.task_id}: Using OCR translation service")
             service = SubtitleTranslationService(
                 task_id=config.task_id,
                 api_key=config.api_key,
@@ -80,16 +81,14 @@ async def start_translation(config: TranslationConfig):
         # 在独立线程中处理
         def process_thread():
             try:
-                print(f"\n[Translation Thread] Starting for task {config.task_id}")
-                print(f"[Translation Thread] Method: {'Whisper' if use_whisper else 'OCR'}")
-                print(f"[Translation Thread] Input: {input_path}")
-                print(f"[Translation Thread] Output: {output_path}")
-                sys.stdout.flush()
+                api_logger.info(f"Task {config.task_id}: Translation thread started")
+                api_logger.info(f"Task {config.task_id}: Method={'Whisper' if use_whisper else 'OCR'}")
+                api_logger.info(f"Task {config.task_id}: Input={input_path}")
+                api_logger.info(f"Task {config.task_id}: Output={output_path}")
 
                 if use_whisper:
                     # Whisper 翻译流程
-                    print(f"[Translation Thread] Calling Whisper translate_and_render...")
-                    sys.stdout.flush()
+                    api_logger.info(f"Task {config.task_id}: Calling Whisper translate_and_render")
 
                     service.translate_and_render(
                         video_path=input_path,
@@ -103,6 +102,7 @@ async def start_translation(config: TranslationConfig):
                     )
                 else:
                     # OCR 翻译流程
+                    api_logger.info(f"Task {config.task_id}: Calling OCR process_video")
                     service.process_video(
                         video_path=input_path,
                         output_path=output_path,
@@ -111,8 +111,8 @@ async def start_translation(config: TranslationConfig):
                     )
 
                 # 更新任务状态
-                print(f"[Translation Thread] SUCCESS! Output saved to: {output_path}")
-                sys.stdout.flush()
+                api_logger.info(f"Task {config.task_id}: Translation completed successfully")
+                api_logger.info(f"Task {config.task_id}: Output saved to {output_path}")
 
                 task_manager.update_task(
                     config.task_id,
@@ -120,14 +120,7 @@ async def start_translation(config: TranslationConfig):
                     output_path=output_path
                 )
             except Exception as e:
-                # 打印完整错误堆栈
-                import traceback
-                print(f"\n{'='*60}")
-                print(f"ERROR in translation thread for task {config.task_id}:")
-                print(f"{'='*60}")
-                traceback.print_exc()
-                print(f"{'='*60}\n")
-
+                log_error(api_logger, e, f"Translation thread failed for task {config.task_id}")
                 task_manager.update_task(
                     config.task_id,
                     status=TaskStatus.ERROR,
@@ -153,16 +146,9 @@ async def start_translation(config: TranslationConfig):
         }
 
     except TaskNotFoundException as e:
+        api_logger.error(f"Task {config.task_id}: Task not found")
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        # 打印完整错误堆栈
-        import traceback
-        print(f"\n{'='*60}")
-        print(f"ERROR starting translation for task {config.task_id}:")
-        print(f"{'='*60}")
-        traceback.print_exc()
-        print(f"{'='*60}\n")
-        sys.stdout.flush()
-
+        log_error(api_logger, e, f"Failed to start translation for task {config.task_id}")
         error_detail = str(e) if str(e) else f"{type(e).__name__}: {repr(e)}"
         raise HTTPException(status_code=500, detail=f"启动翻译失败: {error_detail}")

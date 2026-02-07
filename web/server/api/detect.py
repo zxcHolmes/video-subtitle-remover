@@ -8,6 +8,7 @@ from services.task_manager import task_manager
 from services.subtitle_detect_service import SubtitleDetectService
 from services.whisper_subtitle_service import WhisperSubtitleService
 from utils.exceptions import TaskNotFoundException
+from utils.logger import api_logger, log_error
 
 router = APIRouter()
 
@@ -40,10 +41,10 @@ async def detect_subtitles(request: dict):
         # 根据检测方式创建服务
         if detection_method == 'whisper':
             service = WhisperSubtitleService(task_id=task_id)
-            print(f"[API] Using Whisper for subtitle detection")
+            api_logger.info(f"Task {task_id}: Using Whisper for subtitle detection")
         else:
             service = SubtitleDetectService(task_id=task_id)
-            print(f"[API] Using OCR for subtitle detection")
+            api_logger.info(f"Task {task_id}: Using OCR for subtitle detection")
 
         # 转换 sub_area
         sub_area_tuple = tuple(sub_area) if sub_area else None
@@ -51,23 +52,20 @@ async def detect_subtitles(request: dict):
         # 在独立线程中检测
         def detect_thread():
             try:
-                print(f"\n[Detection Thread] Starting for task {task_id}")
-                print(f"[Detection Thread] Method: {detection_method}")
-                print(f"[Detection Thread] Video: {task.file_path}")
-                print(f"[Detection Thread] Sub area: {sub_area_tuple}")
-                sys.stdout.flush()
+                api_logger.info(f"Task {task_id}: Detection thread started")
+                api_logger.info(f"Task {task_id}: Method={detection_method}")
+                api_logger.info(f"Task {task_id}: Video={task.file_path}")
+                api_logger.info(f"Task {task_id}: Sub area={sub_area_tuple}")
 
                 if detection_method == 'whisper':
-                    print(f"[Detection Thread] Calling Whisper detect_and_transcribe...")
-                    sys.stdout.flush()
+                    api_logger.info(f"Task {task_id}: Calling Whisper detect_and_transcribe")
 
                     result = service.detect_and_transcribe(
                         video_path=task.file_path,
                         sub_area=sub_area_tuple
                     )
                 else:
-                    print(f"[Detection Thread] Calling OCR detect_and_recognize...")
-                    sys.stdout.flush()
+                    api_logger.info(f"Task {task_id}: Calling OCR detect_and_recognize")
 
                     result = service.detect_and_recognize(
                         video_path=task.file_path,
@@ -80,14 +78,12 @@ async def detect_subtitles(request: dict):
                     f"{task_id}_detected.json"
                 )
 
-                print(f"[Detection Thread] Saving result to: {result_path}")
-                sys.stdout.flush()
+                api_logger.info(f"Task {task_id}: Saving detection result to {result_path}")
 
                 with open(result_path, 'w', encoding='utf-8') as f:
                     json.dump(result, f, ensure_ascii=False, indent=2)
 
-                print(f"[Detection Thread] Result saved successfully")
-                sys.stdout.flush()
+                api_logger.info(f"Task {task_id}: Detection result saved successfully")
 
                 # 如果是 Whisper 方式，自动确认（不需要用户手动确认）
                 if detection_method == 'whisper':
@@ -109,14 +105,7 @@ async def detect_subtitles(request: dict):
                 )
 
             except Exception as e:
-                # 打印完整的错误堆栈到控制台
-                import traceback
-                print(f"\n{'='*60}")
-                print(f"ERROR in detection thread for task {task_id}:")
-                print(f"{'='*60}")
-                traceback.print_exc()
-                print(f"{'='*60}\n")
-
+                log_error(api_logger, e, f"Detection thread failed for task {task_id}")
                 task_manager.update_task(
                     task_id,
                     status=TaskStatus.ERROR,
@@ -143,8 +132,10 @@ async def detect_subtitles(request: dict):
         }
 
     except TaskNotFoundException as e:
+        api_logger.error(f"Task {task_id}: Task not found")
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        log_error(api_logger, e, f"Failed to start detection for task {task_id}")
         raise HTTPException(status_code=500, detail=f"启动检测失败: {str(e)}")
 
 

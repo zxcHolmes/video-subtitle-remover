@@ -10,6 +10,7 @@ if project_root not in sys.path:
 
 from backend.main import SubtitleDetect
 from backend import config
+from utils.logger import service_logger, log_error
 
 
 class WhisperSubtitleService:
@@ -36,8 +37,7 @@ class WhisperSubtitleService:
         检测字幕区域（只需要一次）
         返回: (ymin, ymax, xmin, xmax)
         """
-        print("[Whisper] Step 1: Detecting subtitle region...")
-        sys.stdout.flush()
+        service_logger.info(f"Task {self.task_id}: Step 1 - Detecting subtitle region")
 
         cap = cv2.VideoCapture(video_path)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -46,7 +46,7 @@ class WhisperSubtitleService:
 
         # 如果指定了区域，直接返回
         if sub_area:
-            print(f"[Whisper] Using specified region: {sub_area}")
+            service_logger.info(f"Task {self.task_id}: Using specified region {sub_area}")
             return sub_area
 
         # 暂时跳过 OCR 检测，使用默认区域（底部 15%，为翻译字幕预留空间）
@@ -58,9 +58,8 @@ class WhisperSubtitleService:
             width - 50           # xmax: 右边留 50px 边距
         )
 
-        print(f"[Whisper] Using default region for translated subtitles (bottom 5%)")
-        print(f"[Whisper] Region: Y:{default_region[0]}-{default_region[1]}, X:{default_region[2]}-{default_region[3]}")
-        sys.stdout.flush()
+        service_logger.info(f"Task {self.task_id}: Using default region for translated subtitles (bottom 5%)")
+        service_logger.info(f"Task {self.task_id}: Region Y:{default_region[0]}-{default_region[1]}, X:{default_region[2]}-{default_region[3]}")
 
         cap.release()
         return default_region
@@ -81,8 +80,7 @@ class WhisperSubtitleService:
             ...
         ]
         """
-        print("[Whisper] Step 2: Transcribing audio with Faster Whisper...")
-        sys.stdout.flush()
+        service_logger.info(f"Task {self.task_id}: Step 2 - Transcribing audio with Faster Whisper")
 
         try:
             from faster_whisper import WhisperModel
@@ -90,19 +88,16 @@ class WhisperSubtitleService:
             # 使用 medium 模型（平衡速度和准确率）
             # 可选: tiny, base, small, medium, large-v2, large-v3
             model_size = "medium"
-            print(f"[Whisper] Loading {model_size} model...")
-            sys.stdout.flush()
+            service_logger.info(f"Task {self.task_id}: Loading {model_size} model")
 
             # 强制使用 GPU
             device = "cuda"
             compute_type = "float16"
 
-            print(f"[Whisper] Using device: {device}, compute_type: {compute_type}")
-            sys.stdout.flush()
+            service_logger.info(f"Task {self.task_id}: Using device={device}, compute_type={compute_type}")
 
             model = WhisperModel(model_size, device=device, compute_type=compute_type)
-            print(f"[Whisper] Model loaded on {device}")
-            sys.stdout.flush()
+            service_logger.info(f"Task {self.task_id}: Model loaded on {device}")
 
             # 转录音频
             segments, info = model.transcribe(
@@ -113,8 +108,7 @@ class WhisperSubtitleService:
                 vad_parameters=dict(min_silence_duration_ms=500)
             )
 
-            print(f"[Whisper] Detected language: {info.language} (probability: {info.language_probability:.2f})")
-            sys.stdout.flush()
+            service_logger.info(f"Task {self.task_id}: Detected language={info.language} (probability={info.language_probability:.2f})")
 
             # 转换为列表
             results = []
@@ -125,20 +119,17 @@ class WhisperSubtitleService:
                     'end': segment.end,
                     'text': segment.text.strip()
                 })
-                print(f"[Whisper] [{segment.start:.1f}s - {segment.end:.1f}s] {segment.text.strip()}")
-                sys.stdout.flush()
+                service_logger.debug(f"Task {self.task_id}: [{segment.start:.1f}s - {segment.end:.1f}s] {segment.text.strip()}")
 
                 self.progress = 50 + (50 * (i + 1) / len(list(segments)))
 
-            print(f"[Whisper] Transcription completed: {len(results)} segments")
-            sys.stdout.flush()
+            service_logger.info(f"Task {self.task_id}: Transcription completed - {len(results)} segments")
 
             return results
 
         except ImportError:
             error_msg = "Faster Whisper not installed. Please run: pip install faster-whisper"
-            print(f"[Whisper ERROR] {error_msg}")
-            sys.stdout.flush()
+            service_logger.error(f"Task {self.task_id}: {error_msg}")
             raise ImportError(error_msg)
 
     def detect_and_transcribe(
@@ -154,8 +145,7 @@ class WhisperSubtitleService:
             self.status = "processing"
             self.progress = 0
 
-            print(f"[Whisper] Starting Whisper-based subtitle detection for task {self.task_id}")
-            sys.stdout.flush()
+            service_logger.info(f"Task {self.task_id}: Starting Whisper-based subtitle detection")
 
             # Step 1: 检测字幕区域
             subtitle_region = self.detect_subtitle_region(video_path, sub_area)
@@ -176,11 +166,14 @@ class WhisperSubtitleService:
             self.status = "completed"
             self.progress = 100
 
+            service_logger.info(f"Task {self.task_id}: Whisper detection completed - {len(segments)} segments")
+
             return result
 
         except Exception as e:
             self.status = "error"
             self.error = str(e)
+            log_error(service_logger, e, f"Whisper detection failed for task {self.task_id}")
             raise e
 
     def get_progress(self) -> dict:
