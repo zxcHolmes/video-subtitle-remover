@@ -18,11 +18,6 @@ from api import upload, process, status, download, translate, detect
 from services.task_manager import task_manager
 from utils.logger import main_logger, api_logger, service_logger
 
-# Initialize loggers
-main_logger.info("=" * 80)
-main_logger.info("Video Subtitle Remover Web Server Starting")
-main_logger.info("=" * 80)
-
 app = FastAPI(
     title="Video Subtitle Remover Web",
     description="Web interface for video subtitle removal",
@@ -45,6 +40,16 @@ app.include_router(detect.router, prefix="/api", tags=["detect"])
 app.include_router(translate.router, prefix="/api", tags=["translate"])
 app.include_router(status.router, prefix="/api", tags=["status"])
 app.include_router(download.router, prefix="/api", tags=["download"])
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Startup event - runs when server starts"""
+    main_logger.info("=" * 80)
+    main_logger.info("Video Subtitle Remover Web Server Started")
+    main_logger.info("Server URL: http://0.0.0.0:8000")
+    main_logger.info("API Docs: http://0.0.0.0:8000/docs")
+    main_logger.info("=" * 80)
 
 
 @app.get("/")
@@ -96,14 +101,16 @@ if os.path.exists(frontend_dist):
 
 if __name__ == "__main__":
     import uvicorn
+    import logging
 
-    main_logger.info("Starting uvicorn server on http://0.0.0.0:8000")
-    main_logger.info("API Documentation: http://0.0.0.0:8000/docs")
+    # Configure uvicorn to use our logger
+    logging.getLogger("uvicorn").handlers = []
+    logging.getLogger("uvicorn.access").handlers = []
 
-    # Configure uvicorn to not override our logging
+    # Run server
     uvicorn.run(
         app,
         host="0.0.0.0",
         port=8000,
-        log_config=None  # Don't use uvicorn's default logging config
+        log_level="info"
     )
