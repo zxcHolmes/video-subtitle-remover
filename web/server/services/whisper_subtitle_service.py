@@ -49,47 +49,59 @@ class WhisperSubtitleService:
             print(f"[Whisper] Using specified region: {sub_area}")
             return sub_area
 
-        # 初始化检测器
-        detector = SubtitleDetect(video_path, sub_area)
-
-        # 采样几帧检测字幕区域
-        sample_frames = [fps * i for i in range(0, min(10, int(cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps)))]
-
-        all_boxes = []
-        for frame_no in sample_frames:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_no)
-            ret, frame = cap.read()
-            if not ret:
-                continue
-
-            dt_boxes, _ = detector.detect_subtitle(frame)
-            if dt_boxes is not None and len(dt_boxes) > 0:
-                coordinates = detector.get_coordinates(dt_boxes.tolist())
-                all_boxes.extend(coordinates)
-
-        cap.release()
-
-        if not all_boxes:
-            print("[Whisper] No subtitle region detected")
-            return None
-
-        # 计算字幕区域的边界（取所有检测框的并集）
-        xmins = [box[0] for box in all_boxes]
-        xmaxs = [box[1] for box in all_boxes]
-        ymins = [box[2] for box in all_boxes]
-        ymaxs = [box[3] for box in all_boxes]
-
-        subtitle_region = (
-            min(ymins),  # ymin
-            max(ymaxs),  # ymax
-            min(xmins),  # xmin
-            max(xmaxs)   # xmax
+        # 使用默认字幕区域（底部 20%）避免 PaddleOCR CUDA 问题
+        default_region = (
+            int(height * 0.8),  # ymin: 80% 位置开始
+            height,             # ymax: 到底部
+            0,                  # xmin: 左边界
+            width               # xmax: 右边界
         )
-
-        print(f"[Whisper] Detected subtitle region: Y:{subtitle_region[0]}-{subtitle_region[1]}, X:{subtitle_region[2]}-{subtitle_region[3]}")
+        print(f"[Whisper] Using default region (bottom 20%): Y:{default_region[0]}-{default_region[1]}, X:{default_region[2]}-{default_region[3]}")
         sys.stdout.flush()
+        return default_region
 
-        return subtitle_region
+        # 如果需要精确检测，取消下面的注释（需要解决 CUDA 问题）
+        # 初始化检测器
+        # detector = SubtitleDetect(video_path, sub_area)
+        #
+        # # 采样几帧检测字幕区域
+        # sample_frames = [fps * i for i in range(0, min(10, int(cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps)))]
+        #
+        # all_boxes = []
+        # for frame_no in sample_frames:
+        #     cap.set(cv2.CAP_PROP_POS_FRAMES, frame_no)
+        #     ret, frame = cap.read()
+        #     if not ret:
+        #         continue
+        #
+        #     dt_boxes, _ = detector.detect_subtitle(frame)
+        #     if dt_boxes is not None and len(dt_boxes) > 0:
+        #         coordinates = detector.get_coordinates(dt_boxes.tolist())
+        #         all_boxes.extend(coordinates)
+        #
+        # cap.release()
+        #
+        # if not all_boxes:
+        #     print("[Whisper] No subtitle region detected")
+        #     return None
+        #
+        # # 计算字幕区域的边界（取所有检测框的并集）
+        # xmins = [box[0] for box in all_boxes]
+        # xmaxs = [box[1] for box in all_boxes]
+        # ymins = [box[2] for box in all_boxes]
+        # ymaxs = [box[3] for box in all_boxes]
+        #
+        # subtitle_region = (
+        #     min(ymins),  # ymin
+        #     max(ymaxs),  # ymax
+        #     min(xmins),  # xmin
+        #     max(xmaxs)   # xmax
+        # )
+        #
+        # print(f"[Whisper] Detected subtitle region: Y:{subtitle_region[0]}-{subtitle_region[1]}, X:{subtitle_region[2]}-{subtitle_region[3]}")
+        # sys.stdout.flush()
+        #
+        # return subtitle_region
 
     def transcribe_with_whisper(
         self,
@@ -119,9 +131,12 @@ class WhisperSubtitleService:
             print(f"[Whisper] Loading {model_size} model...")
             sys.stdout.flush()
 
-            # 使用 GPU 如果可用
-            device = "cuda" if config.ONNX_PROVIDERS else "cpu"
-            compute_type = "float16" if device == "cuda" else "int8"
+            # 临时使用 CPU（避免 CUDNN 兼容性问题）
+            device = "cpu"
+            compute_type = "int8"
+
+            print(f"[Whisper] Using CPU (avoiding CUDNN compatibility issues)")
+            sys.stdout.flush()
 
             model = WhisperModel(model_size, device=device, compute_type=compute_type)
             print(f"[Whisper] Model loaded on {device}")
