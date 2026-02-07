@@ -16,7 +16,7 @@ if project_root not in sys.path:
 
 from api import upload, process, status, download, translate, detect
 from services.task_manager import task_manager
-import logging, api_logger, service_logger
+import logging
 
 app = FastAPI(
     title="Video Subtitle Remover Web",
