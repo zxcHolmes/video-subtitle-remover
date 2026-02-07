@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 import json
 from fastapi import APIRouter, HTTPException
@@ -50,12 +51,24 @@ async def detect_subtitles(request: dict):
         # 在独立线程中检测
         def detect_thread():
             try:
+                print(f"\n[Detection Thread] Starting for task {task_id}")
+                print(f"[Detection Thread] Method: {detection_method}")
+                print(f"[Detection Thread] Video: {task.file_path}")
+                print(f"[Detection Thread] Sub area: {sub_area_tuple}")
+                sys.stdout.flush()
+
                 if detection_method == 'whisper':
+                    print(f"[Detection Thread] Calling Whisper detect_and_transcribe...")
+                    sys.stdout.flush()
+
                     result = service.detect_and_transcribe(
                         video_path=task.file_path,
                         sub_area=sub_area_tuple
                     )
                 else:
+                    print(f"[Detection Thread] Calling OCR detect_and_recognize...")
+                    sys.stdout.flush()
+
                     result = service.detect_and_recognize(
                         video_path=task.file_path,
                         sub_area=sub_area_tuple
@@ -67,8 +80,14 @@ async def detect_subtitles(request: dict):
                     f"{task_id}_detected.json"
                 )
 
+                print(f"[Detection Thread] Saving result to: {result_path}")
+                sys.stdout.flush()
+
                 with open(result_path, 'w', encoding='utf-8') as f:
                     json.dump(result, f, ensure_ascii=False, indent=2)
+
+                print(f"[Detection Thread] Result saved successfully")
+                sys.stdout.flush()
 
                 # 如果是 Whisper 方式，自动确认（不需要用户手动确认）
                 if detection_method == 'whisper':

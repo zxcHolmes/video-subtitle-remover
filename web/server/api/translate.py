@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import threading
 from fastapi import APIRouter, HTTPException
@@ -79,8 +80,17 @@ async def start_translation(config: TranslationConfig):
         # 在独立线程中处理
         def process_thread():
             try:
+                print(f"\n[Translation Thread] Starting for task {config.task_id}")
+                print(f"[Translation Thread] Method: {'Whisper' if use_whisper else 'OCR'}")
+                print(f"[Translation Thread] Input: {input_path}")
+                print(f"[Translation Thread] Output: {output_path}")
+                sys.stdout.flush()
+
                 if use_whisper:
                     # Whisper 翻译流程
+                    print(f"[Translation Thread] Calling Whisper translate_and_render...")
+                    sys.stdout.flush()
+
                     service.translate_and_render(
                         video_path=input_path,
                         whisper_result_path=detected_path,
@@ -101,6 +111,9 @@ async def start_translation(config: TranslationConfig):
                     )
 
                 # 更新任务状态
+                print(f"[Translation Thread] SUCCESS! Output saved to: {output_path}")
+                sys.stdout.flush()
+
                 task_manager.update_task(
                     config.task_id,
                     status=TaskStatus.COMPLETED,

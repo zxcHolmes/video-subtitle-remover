@@ -211,12 +211,18 @@ class WhisperTranslationService:
         out = cv2.VideoWriter(temp_output, fourcc, fps, (width, height))
 
         # 创建时间段到字幕的映射
+        print(f"[Rendering] Creating frame-to-subtitle mapping...")
+        sys.stdout.flush()
+
         time_to_subtitle = {}
         for segment in translated_segments:
             start_frame = int(segment['start'] * fps)
             end_frame = int(segment['end'] * fps)
             for frame_no in range(start_frame, end_frame + 1):
                 time_to_subtitle[frame_no] = segment['translated']
+
+        print(f"[Rendering] Mapped {len(time_to_subtitle)} frames with subtitles")
+        sys.stdout.flush()
 
         # 处理每一帧
         frame_no = 0
@@ -308,19 +314,34 @@ class WhisperTranslationService:
             sys.stdout.flush()
 
             # 读取 Whisper 识别结果
+            print(f"[WhisperTranslation] Loading Whisper result from: {whisper_result_path}")
+            sys.stdout.flush()
+
             with open(whisper_result_path, 'r', encoding='utf-8') as f:
                 whisper_result = json.load(f)
 
             subtitle_region = whisper_result.get('subtitle_region')
             segments = whisper_result.get('segments', [])
 
+            print(f"[WhisperTranslation] Loaded: {len(segments)} segments, region: {subtitle_region}")
+            sys.stdout.flush()
+
             if not subtitle_region:
-                raise ValueError("No subtitle region found in Whisper result")
+                error_msg = "No subtitle region found in Whisper result"
+                print(f"[WhisperTranslation ERROR] {error_msg}")
+                sys.stdout.flush()
+                raise ValueError(error_msg)
 
             if not segments:
-                raise ValueError("No subtitle segments found in Whisper result")
+                error_msg = "No subtitle segments found in Whisper result"
+                print(f"[WhisperTranslation ERROR] {error_msg}")
+                sys.stdout.flush()
+                raise ValueError(error_msg)
 
             # 步骤1: 翻译所有片段
+            print(f"[WhisperTranslation] Step 1: Translating {len(segments)} segments...")
+            sys.stdout.flush()
+
             translated_segments = self.batch_translate_segments(
                 segments,
                 target_lang,
@@ -329,7 +350,13 @@ class WhisperTranslationService:
                 model
             )
 
+            print(f"[WhisperTranslation] Step 1 completed: {len(translated_segments)} segments translated")
+            sys.stdout.flush()
+
             # 步骤2: 渲染到视频
+            print(f"[WhisperTranslation] Step 2: Rendering to video...")
+            sys.stdout.flush()
+
             output_file = self.process_video_with_translations(
                 video_path,
                 translated_segments,
