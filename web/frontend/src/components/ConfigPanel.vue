@@ -275,6 +275,13 @@ const startDetection = async () => {
     const result = await detectSubtitles(props.taskId, config.sub_area, config.detectionMethod)
     ElMessage.success('开始识别字幕')
     detectionCompleted.value = true
+
+    // 如果是 Whisper 方式，自动确认（不需要用户预览）
+    if (config.detectionMethod === 'whisper') {
+      subtitlesConfirmed.value = true
+      ElMessage.info('Whisper 识别完成，可以开始翻译')
+    }
+
     emit('detection-started', result)
   } catch (error) {
     if (error.response?.status === 404) {

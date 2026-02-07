@@ -1,9 +1,11 @@
 import os
+import json
 import threading
 from fastapi import APIRouter, HTTPException
 from models.task import TranslationConfig, TaskStatus
 from services.task_manager import task_manager
 from services.translation_service import SubtitleTranslationService
+from services.whisper_translation_service import WhisperTranslationService
 from utils.exceptions import TaskNotFoundException
 
 router = APIRouter()
@@ -25,26 +27,44 @@ async def start_translation(config: TranslationConfig):
                 detail=f"任务状态不正确: {task.status}"
             )
 
-        # 检查是否有确认的字幕数据
+        # 检查是否有确认的字幕数据（或 Whisper 检测结果）
         confirmed_path = os.path.join(
             os.path.dirname(task.file_path),
             f"{config.task_id}_confirmed.json"
         )
 
-        if not os.path.exists(confirmed_path):
+        detected_path = os.path.join(
+            os.path.dirname(task.file_path),
+            f"{config.task_id}_detected.json"
+        )
+
+        # 判断使用哪种翻译方式
+        use_whisper = False
+        if os.path.exists(detected_path):
+            with open(detected_path, 'r', encoding='utf-8') as f:
+                detected_data = json.load(f)
+                if detected_data.get('method') == 'whisper':
+                    use_whisper = True
+
+        if not os.path.exists(confirmed_path) and not (use_whisper and os.path.exists(detected_path)):
             raise HTTPException(
                 status_code=400,
                 detail="请先完成字幕检测和确认"
             )
 
-        # 创建翻译服务
-        service = SubtitleTranslationService(
-            task_id=config.task_id,
-            api_key=config.api_key,
-            api_base=config.api_base,
-            model=config.model,
-            target_lang=config.target_lang
-        )
+        # 根据检测方式创建对应的翻译服务
+        if use_whisper:
+            print(f"[API] Using Whisper translation service")
+            service = WhisperTranslationService(task_id=config.task_id)
+        else:
+            print(f"[API] Using OCR translation service")
+            service = SubtitleTranslationService(
+                task_id=config.task_id,
+                api_key=config.api_key,
+                api_base=config.api_base,
+                model=config.model,
+                target_lang=config.target_lang
+            )
 
         # 转换 sub_area
         sub_area = tuple(config.sub_area) if config.sub_area else None
@@ -59,12 +79,27 @@ async def start_translation(config: TranslationConfig):
         # 在独立线程中处理
         def process_thread():
             try:
-                service.process_video(
-                    video_path=input_path,
-                    output_path=output_path,
-                    sub_area=sub_area,
-                    bg_color=config.bg_color
-                )
+                if use_whisper:
+                    # Whisper 翻译流程
+                    service.translate_and_render(
+                        video_path=input_path,
+                        whisper_result_path=detected_path,
+                        output_path=output_path,
+                        api_key=config.api_key,
+                        api_base=config.api_base,
+                        model=config.model,
+                        target_lang=config.target_lang,
+                        bg_color=config.bg_color
+                    )
+                else:
+                    # OCR 翻译流程
+                    service.process_video(
+                        video_path=input_path,
+                        output_path=output_path,
+                        sub_area=sub_area,
+                        bg_color=config.bg_color
+                    )
+
                 # 更新任务状态
                 task_manager.update_task(
                     config.task_id,
@@ -72,6 +107,14 @@ async def start_translation(config: TranslationConfig):
                     output_path=output_path
                 )
             except Exception as e:
+                # 打印完整错误堆栈
+                import traceback
+                print(f"\n{'='*60}")
+                print(f"ERROR in translation thread for task {config.task_id}:")
+                print(f"{'='*60}")
+                traceback.print_exc()
+                print(f"{'='*60}\n")
+
                 task_manager.update_task(
                     config.task_id,
                     status=TaskStatus.ERROR,

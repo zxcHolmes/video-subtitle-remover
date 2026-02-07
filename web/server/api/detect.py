@@ -70,6 +70,18 @@ async def detect_subtitles(request: dict):
                 with open(result_path, 'w', encoding='utf-8') as f:
                     json.dump(result, f, ensure_ascii=False, indent=2)
 
+                # 如果是 Whisper 方式，自动确认（不需要用户手动确认）
+                if detection_method == 'whisper':
+                    confirmed_path = os.path.join(
+                        os.path.dirname(task.file_path),
+                        f"{task_id}_confirmed.json"
+                    )
+                    with open(confirmed_path, 'w', encoding='utf-8') as f:
+                        json.dump({
+                            'method': 'whisper',
+                            'auto_confirmed': True
+                        }, f, ensure_ascii=False, indent=2)
+
                 # 更新任务
                 task_manager.update_task(
                     task_id,
