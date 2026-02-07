@@ -37,11 +37,11 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"文件保存失败: {str(e)}")
 
-    # Create task
-    task = task_manager.create_task(task_id, file_path)
+    # Create task (with file deduplication)
+    task = task_manager.create_task(task_id, file_path, file.filename)
 
     return {
         "task_id": task_id,
         "filename": file.filename,
-        "status": task.status
+        "status": task.status.value
     }

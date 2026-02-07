@@ -265,7 +265,11 @@ const startDetection = async () => {
     detectionCompleted.value = true
     emit('detection-started', result)
   } catch (error) {
-    ElMessage.error('识别失败: ' + (error.response?.data?.detail || error.message))
+    if (error.response?.status === 404) {
+      ElMessage.error('任务不存在，请重新上传视频（服务器可能已重启）')
+    } else {
+      ElMessage.error('识别失败: ' + (error.response?.data?.detail || error.message))
+    }
     detectionCompleted.value = false
   } finally {
     detecting.value = false

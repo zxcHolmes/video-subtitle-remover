@@ -148,7 +148,11 @@ const loadDetectionResult = async () => {
       loading.value = false
     }
   } catch (err) {
-    error.value = err.response?.data?.detail || err.message || '网络错误，请重试'
+    if (err.response?.status === 404) {
+      error.value = '任务不存在或已过期，请重新上传视频'
+    } else {
+      error.value = err.response?.data?.detail || err.message || '网络错误，请重试'
+    }
     loading.value = false
   }
 }
