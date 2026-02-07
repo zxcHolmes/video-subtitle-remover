@@ -93,9 +93,12 @@ class WhisperSubtitleService:
             print(f"[Whisper] Loading {model_size} model...")
             sys.stdout.flush()
 
-            # 使用 GPU 如果可用
-            device = "cuda" if config.ONNX_PROVIDERS else "cpu"
-            compute_type = "float16" if device == "cuda" else "int8"
+            # 强制使用 GPU
+            device = "cuda"
+            compute_type = "float16"
+
+            print(f"[Whisper] Using device: {device}, compute_type: {compute_type}")
+            sys.stdout.flush()
 
             model = WhisperModel(model_size, device=device, compute_type=compute_type)
             print(f"[Whisper] Model loaded on {device}")
