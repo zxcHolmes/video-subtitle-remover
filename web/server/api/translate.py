@@ -25,11 +25,12 @@ async def start_translation(config: TranslationConfig):
         task = task_manager.get_task(config.task_id)
         api_logger.info(f"Task {config.task_id}: Current status={task.status}")
 
-        if task.status != TaskStatus.UPLOADED:
-            api_logger.warning(f"Task {config.task_id}: Invalid status for translation - expected UPLOADED, got {task.status}")
+        # 允许在 UPLOADED（检测完成后）或 COMPLETED（重新翻译）状态下启动翻译
+        if task.status not in [TaskStatus.UPLOADED, TaskStatus.COMPLETED]:
+            api_logger.warning(f"Task {config.task_id}: Invalid status for translation - expected UPLOADED or COMPLETED, got {task.status}")
             raise HTTPException(
                 status_code=400,
-                detail=f"任务状态不正确: {task.status}"
+                detail=f"任务状态不正确: {task.status}，只能在检测完成或已完成状态下启动翻译"
             )
 
         # 检查是否有确认的字幕数据（或 Whisper 检测结果）
