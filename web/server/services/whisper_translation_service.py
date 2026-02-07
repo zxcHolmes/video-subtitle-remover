@@ -41,6 +41,11 @@ class WhisperTranslationService:
     ) -> str:
         """翻译单条文本"""
         try:
+            service_logger.info(f"Task {self.task_id}: Calling translation API")
+            service_logger.info(f"Task {self.task_id}: API base: {api_base}")
+            service_logger.info(f"Task {self.task_id}: Model: {model}")
+            service_logger.info(f"Task {self.task_id}: Original text: {text}")
+
             headers = {
                 'Authorization': f'Bearer {api_key}',
                 'Content-Type': 'application/json'
@@ -61,6 +66,8 @@ class WhisperTranslationService:
                 'temperature': 0.3
             }
 
+            service_logger.info(f"Task {self.task_id}: Sending request to {api_base}/v1/chat/completions")
+
             response = requests.post(
                 f"{api_base}/v1/chat/completions",
                 headers=headers,
@@ -68,16 +75,27 @@ class WhisperTranslationService:
                 timeout=30
             )
 
+            service_logger.info(f"Task {self.task_id}: API response status: {response.status_code}")
+
             if response.status_code == 200:
                 result = response.json()
                 translated = result['choices'][0]['message']['content'].strip()
+                service_logger.info(f"Task {self.task_id}: Translation successful: {translated}")
                 return translated
             else:
-                service_logger.error(f"Task {self.task_id}: Translation API error {response.status_code} - {response.text}")
+                service_logger.error(f"Task {self.task_id}: ========== Translation API Error ==========")
+                service_logger.error(f"Task {self.task_id}: Status code: {response.status_code}")
+                service_logger.error(f"Task {self.task_id}: Response body: {response.text}")
+                service_logger.error(f"Task {self.task_id}: =========================================")
                 return text  # 翻译失败，返回原文
 
         except Exception as e:
-            service_logger.error(f"Task {self.task_id}: Translation error - {str(e)}")
+            service_logger.error(f"Task {self.task_id}: ========== Translation Exception ==========")
+            service_logger.error(f"Task {self.task_id}: Exception type: {type(e).__name__}")
+            service_logger.error(f"Task {self.task_id}: Exception message: {str(e)}")
+            import traceback
+            service_logger.error(f"Task {self.task_id}: Traceback:\n{traceback.format_exc()}")
+            service_logger.error(f"Task {self.task_id}: ========================================")
             return text
 
     def batch_translate_segments(
@@ -198,35 +216,62 @@ class WhisperTranslationService:
         """
         处理视频，在指定时间段渲染翻译字幕
         """
-        service_logger.info(f"Task {self.task_id}: Processing video with {len(translated_segments)} subtitle segments")
+        service_logger.info(f"Task {self.task_id}: ========== Starting Video Rendering ==========")
+        service_logger.info(f"Task {self.task_id}: Input video: {video_path}")
 
         cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            error_msg = f"Failed to open video file: {video_path}"
+            service_logger.error(f"Task {self.task_id}: {error_msg}")
+            raise RuntimeError(error_msg)
+
         fps = cap.get(cv2.CAP_PROP_FPS)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+        service_logger.info(f"Task {self.task_id}: Video info - FPS: {fps}, Resolution: {width}x{height}, Total frames: {total_frames}")
+        service_logger.info(f"Task {self.task_id}: Subtitle region: {subtitle_region}")
+        service_logger.info(f"Task {self.task_id}: Segments to render: {len(translated_segments)}")
+
         # 创建临时输出文件
         temp_output = output_path.replace('.mp4', '_temp.mp4')
+        service_logger.info(f"Task {self.task_id}: Temp output: {temp_output}")
 
         # 使用 mp4v 编码器（跨平台兼容）
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(temp_output, fourcc, fps, (width, height))
 
+        if not out.isOpened():
+            error_msg = f"Failed to create VideoWriter for: {temp_output}"
+            service_logger.error(f"Task {self.task_id}: {error_msg}")
+            raise RuntimeError(error_msg)
+
+        service_logger.info(f"Task {self.task_id}: VideoWriter created successfully")
+
         # 创建时间段到字幕的映射
         service_logger.info(f"Task {self.task_id}: Creating frame-to-subtitle mapping")
 
         time_to_subtitle = {}
-        for segment in translated_segments:
+        for i, segment in enumerate(translated_segments):
             start_frame = int(segment['start'] * fps)
             end_frame = int(segment['end'] * fps)
+            frame_count = end_frame - start_frame + 1
+
+            service_logger.info(f"Task {self.task_id}: Segment {i}: frames {start_frame}-{end_frame} ({frame_count} frames) -> '{segment['translated']}'")
+
             for frame_no in range(start_frame, end_frame + 1):
                 time_to_subtitle[frame_no] = segment['translated']
 
         service_logger.info(f"Task {self.task_id}: Mapped {len(time_to_subtitle)} frames with subtitles")
 
         # 处理每一帧
+        service_logger.info(f"Task {self.task_id}: Starting frame-by-frame rendering")
+
         frame_no = 0
+        subtitle_frame_count = 0
+        last_log_percent = 0
+
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
@@ -241,6 +286,7 @@ class WhisperTranslationService:
                     subtitle_region,
                     bg_color
                 )
+                subtitle_frame_count += 1
 
             out.write(frame)
             frame_no += 1
@@ -248,13 +294,19 @@ class WhisperTranslationService:
             # 更新进度 (50-100%)
             self.progress = 50 + 50 * frame_no / total_frames
 
-            if frame_no % 100 == 0:
-                service_logger.debug(f"Task {self.task_id}: Rendering progress {frame_no}/{total_frames} frames ({self.progress:.1f}%)")
+            # 每10%打印一次进度
+            current_percent = int(self.progress - 50)  # 0-50范围
+            if current_percent >= last_log_percent + 10:
+                service_logger.info(f"Task {self.task_id}: Rendering progress {frame_no}/{total_frames} frames ({self.progress:.1f}%), subtitles rendered: {subtitle_frame_count}")
+                last_log_percent = current_percent
 
         cap.release()
         out.release()
 
-        service_logger.info(f"Task {self.task_id}: Video processing completed, re-encoding with FFmpeg")
+        service_logger.info(f"Task {self.task_id}: Frame rendering completed")
+        service_logger.info(f"Task {self.task_id}: Total frames processed: {frame_no}")
+        service_logger.info(f"Task {self.task_id}: Frames with subtitles: {subtitle_frame_count}")
+        service_logger.info(f"Task {self.task_id}: Starting FFmpeg re-encoding")
 
         # 使用 FFmpeg 重新编码（高质量 + 音频）
         import subprocess
@@ -274,18 +326,40 @@ class WhisperTranslationService:
             output_path
         ]
 
+        service_logger.info(f"Task {self.task_id}: FFmpeg command: {' '.join(ffmpeg_cmd)}")
+
         try:
-            subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
-            service_logger.info(f"Task {self.task_id}: FFmpeg encoding completed")
+            result = subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+            service_logger.info(f"Task {self.task_id}: FFmpeg encoding completed successfully")
+
+            if result.stdout:
+                service_logger.info(f"Task {self.task_id}: FFmpeg stdout: {result.stdout.decode()}")
+
+            # 检查输出文件
+            if os.path.exists(output_path):
+                output_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
+                service_logger.info(f"Task {self.task_id}: Final output file: {output_path} ({output_size:.2f} MB)")
+            else:
+                service_logger.error(f"Task {self.task_id}: FFmpeg succeeded but output file does not exist!")
+
         except subprocess.CalledProcessError as e:
-            service_logger.error(f"Task {self.task_id}: FFmpeg error - {e.stderr.decode()}")
+            service_logger.error(f"Task {self.task_id}: ========== FFmpeg Failed ==========")
+            service_logger.error(f"Task {self.task_id}: Return code: {e.returncode}")
+            service_logger.error(f"Task {self.task_id}: stderr: {e.stderr.decode()}")
+            if e.stdout:
+                service_logger.error(f"Task {self.task_id}: stdout: {e.stdout.decode()}")
+            service_logger.error(f"Task {self.task_id}: ===================================")
+
             # 如果 FFmpeg 失败，使用临时文件作为输出
+            service_logger.info(f"Task {self.task_id}: Falling back to temp file")
             import shutil
             shutil.move(temp_output, output_path)
+            service_logger.info(f"Task {self.task_id}: Moved {temp_output} -> {output_path}")
         else:
             # 删除临时文件
             if os.path.exists(temp_output):
                 os.remove(temp_output)
+                service_logger.info(f"Task {self.task_id}: Removed temp file: {temp_output}")
 
         return output_path
 

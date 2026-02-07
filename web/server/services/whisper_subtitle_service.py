@@ -112,6 +112,8 @@ class WhisperSubtitleService:
 
             # 转换为列表
             results = []
+            service_logger.info(f"Task {self.task_id}: Processing Whisper segments:")
+
             for i, segment in enumerate(segments):
                 results.append({
                     'id': i,
@@ -119,11 +121,12 @@ class WhisperSubtitleService:
                     'end': segment.end,
                     'text': segment.text.strip()
                 })
-                service_logger.debug(f"Task {self.task_id}: [{segment.start:.1f}s - {segment.end:.1f}s] {segment.text.strip()}")
+                # 打印每个segment的时间和文本
+                service_logger.info(f"Task {self.task_id}: Segment {i}: [{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text.strip()}")
 
                 self.progress = 50 + (50 * (i + 1) / len(list(segments)))
 
-            service_logger.info(f"Task {self.task_id}: Transcription completed - {len(results)} segments")
+            service_logger.info(f"Task {self.task_id}: Whisper transcription completed - Total {len(results)} segments")
 
             return results
 
